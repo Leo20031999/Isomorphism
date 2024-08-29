@@ -1,68 +1,69 @@
-class Graph:
-    def __init__(self):
-        self.adj_list = {}
+from structures import graph
+from structures import weight
 
-    def add_edge(self, u, v):
-        if u not in self.adj_list:
-            self.adj_list[u] =[]
-        self.adj_list[u].append(v)
-        
-    def print_graph(self):
-        allVertices = set(self.adj_list.keys())
-        for neighbours in self.adj_list.values():
-            allVertices.update(neighbours)
-        adjacencyList = {vertex: set() for vertex in allVertices}
+def OptimalTopDownCommonSubtree(T1,v,T2,u,Mp):
+    if T1.is_leaf(v) or T2.is_leaf(u):
+        return max(T1.heights()[v], T2.heights()[u]), Mp
+    Gvu = graph.Graph()
+    for i in T1.adj_list.get(v,[]):
+        for j in T2.adj_list.get(u, []):
+            Gvu.add_edge(i,j)
+    dum_v = "dum_v"
+    dum_u = "dum_u"
+    for x in T1.adj_list.get(v,[]):
+        Gvu.add_edge(x, dum_u)
+    for y in T2.adj_list.get(u,[]):
+        Gvu.add_edge(dum_v, y)
 
-        for vertex, neighbours in self.adj_list.items():
-            for neighbour in neighbours:
-                adjacencyList[vertex].add(neighbour)
-                adjacencyList[neighbour].add(vertex)
-        for vertex in sorted(adjacencyList):
-            adjacent = sorted(adjacencyList[vertex])
-            print(f'{vertex}: {"->".join(map(str,adjacent))}')
+    heightsT1 = T1.heights()
+    heightsT2 = T2.heights()
 
-    def is_leaf(self, u):
-        if len(self.adj_list[u]) == 1:
-            return True
+    for e in Gvu.adj_list:
+        u, v = e
+        if u == dum_v:
+            Gvu.adj_list[e] = heightsT2[v] + 1
+        elif v == dum_u:
+            Gvu.adj_list[e] = heightsT1[u] + 1
         else:
-            return False
-
-    def center(self):
-        lista = {k: list(v) for k, v in self.adj_list.items()}
-        leafs = [vertex for vertex in lista if len(lista[vertex]) == 1]
-        while len(lista) > 2:
-            new_leafs = []
-            for leaf in leafs:
-                if leaf in lista:
-                    neighbour = lista[leaf][0]
-                    if leaf in lista[neighbour]:
-                        lista[neighbour].remove(leaf)
-                    if len(lista[neighbour]) == 1:
-                        new_leafs.append(neighbour)
-                    del lista[leaf]
-            leafs = new_leafs
-        return list(lista.keys())
+            Gvu.adj_list[e] = OptimalTopDownCommonSubtree(T1,u,T2,v,Mp)[0]
     
-    def calculateHeight(self, node, parent=None):
-        height = 0
-        for neighbor in self.adj_list.get(node, []):
-            if neighbor != parent:
-                height = max(height, self.calculateHeight(neighbor, node) + 1)
-        return height
+    Mvu = solveOptimalPatternMatching(Gvu)
+    distance = max(Gvu.adj_list[e] for e in Mvu)
+    Mvu = {e for e in Mvu if not (is_dummy_vertex(e[0]) or is_dummy_vertex(e[1]))}
+    Mp.update(Mvu)
+    return distance, Mp
 
-    def heights(self):
-        heights = {}
-        allVertices = set(self.adj_list.keys())
-        for vertex in self.adj_list.values():
-            allVertices.update(vertex)
-        for vertex in allVertices:
-            heights[vertex] = self.calculateHeight(vertex,None)
-        return heights
+def is_dummy_vertex(vertex):
+    return isinstance(vertex, str) and vertex.startswith("dum")
+
+
+def reconstructionOfMapping(T1, r1,r2, Mp, M):
+    M.add((r1,r2))
+    P1 = preorder(T1)
+    for v in P1:
+        for (vertex, u) in Mp:
+            if vertex == v:
+                if (parent(T1, v), parent(T1, u)) in M:
+                    M.add(v,u)
+    return M
+
+def preorder(T, vertex):
+    traversal = [node]
+    if node in T:
+        for child in T[node]:
+            traversal.extend(preorder(T,child))
+    return traversal
+
+def parent(T, vertex):
+    for parent, children in T.items():
+        if vertex in children:
+            return parent
+        return None
 
 def hausdorffDistanceBetweenTrees(grafo1, grafo2):
     return 0   
 
-graph = Graph()
+graph = graph.Graph()
 graph.add_edge(0, 1)
 graph.add_edge(0, 2)
 graph.add_edge(1, 3)
