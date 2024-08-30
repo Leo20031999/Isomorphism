@@ -5,7 +5,10 @@ class Graph:
     def add_edge(self, u, v):
         if u not in self.adj_list:
             self.adj_list[u] =[]
+        if v not in self.adj_list:
+            self.adj_list[v] =[]
         self.adj_list[u].append(v)
+        self.adj_list[v].append(u)
         
     def print_graph(self):
         allVertices = set(self.adj_list.keys())
@@ -43,18 +46,53 @@ class Graph:
             leafs = new_leafs
         return list(lista.keys())
     
-    def calculateHeight(self, node, parent=None):
-        height = 0
-        for neighbor in self.adj_list.get(node, []):
-            if neighbor != parent:
-                height = max(height, self.calculateHeight(neighbor, node) + 1)
-        return height
+    def calculateHeight(self):
+        heights = {}
+        stack = []
+        visited = set()
+        node_to_children = {}
+        node_parents = {}
+
+        for node in self.adj_list:
+            if node not in visited:
+                visited.add(node)
+                stack.append((node,None))
+                while stack:
+                    current, parent = stack.pop()
+                    if current not in node_to_children:
+                        node_to_children[current] = []
+                        node_parents[parent] = parent
+                    for neighbor in self.adj_list.get(current,[]):
+                        if neighbor!=parent and neighbor not in visited:
+                            visited.add(neighbor)
+                            stack.append((neighbor, current))
+                            node_to_children[current].append(neighbor)
+        
+        stack = [node for node, children in node_to_children.items() if not children]
+
+        while stack:
+            node = stack.pop()
+
+            if node in heights:
+                continue
+
+            parent = node_parents.get(node)
+            max_child_height = 0
+
+            for child in node_to_children.get(node,[]):
+                if child in heights:
+                    max_child_height = max(max_child_height, heights[child])
+                else:
+                    stack.append(node)
+                    break
+            else:
+                heights[node] = max_child_height + 1
+            
+            if parent is not None:
+                stack.append(parent)
+        return heights
+        
 
     def heights(self):
-        heights = {}
-        allVertices = set(self.adj_list.keys())
-        for vertex in self.adj_list.values():
-            allVertices.update(vertex)
-        for vertex in allVertices:
-            heights[vertex] = self.calculateHeight(vertex,None)
+        heights = self.calculateHeight()
         return heights
