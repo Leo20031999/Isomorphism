@@ -1,5 +1,4 @@
-from structures.graph import Graph
-from structures.weight import WeightedGraph
+from structures.listaAdj import listaAdj
 from collections import deque
 
 def OptimalTopDownCommonSubtree(T1,v,T2,u,Mp, memo = None):
@@ -17,27 +16,28 @@ def OptimalTopDownCommonSubtree(T1,v,T2,u,Mp, memo = None):
         memo[(v,u)] = result
         return result
     
-    Gvu = WeightedGraph()
+    Gvu = listaAdj(orientado=False)
+    Gvu.DefinirN(T1.n + T2.n + 2)
 
     for i in T1.adj_list.get(v,[]):
         for j in T2.adj_list.get(u, []):
-            Gvu.add_edge(i,j,0)
+            Gvu.AdicionarAresta(i,j)
 
-    dum_v = "dum_v"
-    dum_u = "dum_u"
+    dum_v = T1.n + 1
+    dum_u = T1.n + 2
 
     for x in T1.adj_list.get(v,[]):
-        Gvu.add_edge(x, dum_u, T1.heights().get(x,0) + 1)
+        Gvu.AdicionarAresta(x,dum_u)
     for y in T2.adj_list.get(u,[]):
-        Gvu.add_edge(dum_v, y, T2.heights().get(y,0) + 1)
+        Gvu.AdicionarAresta(dum_v, y)
 
     heightsT1 = T1.heights()
     heightsT2 = T2.heights()
 
     edge_weights = {}
 
-    for u_vertex in Gvu.adj_list:
-        for v_vertex in Gvu.adj_list:
+    for u_vertex in Gvu.V():
+        for v_vertex in Gvu.V():
             if u_vertex == dum_v:
                 edge_weights[(u_vertex,v_vertex)] = heightsT2.get(v_vertex, 0) + 1
             elif v_vertex == dum_u:
@@ -161,6 +161,18 @@ def solveOptimalPatternMatching(Gvu):
     
     return best_matching
 
+def calcularAlturas(T):
+    alturas ={}
+    def dfs(v, altura_atual, visitado):
+        visitado[v] = True
+        alturas[v] = altura_atual
+        for vizinho in T.N(v):
+            if not visitado[vizinho]:
+                dfs(vizinho, altura_atual+1, visitado)
+    visitado = [False] * (T.n + 1)
+    dfs(1,0,visitado)
+    return alturas
+
 
 
 def hausdorffDistanceBetweenTrees(grafo1, grafo2):
@@ -187,19 +199,28 @@ def hausdorffDistanceBetweenTrees(grafo1, grafo2):
     reconstructionOfMapping(grafo1,r1,r2,O,M)
     return hd, M
 
-T1 = Graph()
-T1.add_edge(1, 2)
-T1.add_edge(1, 3)
-T1.add_edge(2, 4)
-T1.add_edge(2, 5)
+T1 = listaAdj(orientado=False)
+T2 = listaAdj(orientado=False) 
 
-# Create tree T2
-T2 = Graph()
-T2.add_edge(1, 2)
-T2.add_edge(1, 3)
 
-# Test Hausdorff Distance
-hd, M = hausdorffDistanceBetweenTrees(T1, T2)
+T1.DefinirN(5)
+T2.DefinirN(4) 
 
-print("Hausdorff Distance:", hd)
-print("Common Subtree Structure Mapping:", M)
+T1.AdicionarAresta(1, 2)
+T1.AdicionarAresta(1, 3)
+T1.AdicionarAresta(2, 4)
+T1.AdicionarAresta(2, 5)
+
+T2.AdicionarAresta(1, 2)
+T2.AdicionarAresta(1, 3)
+T2.AdicionarAresta(3, 4)
+
+T1.heights = lambda: calcularAlturas(T1)
+T2.heights = lambda: calcularAlturas(T2)
+
+
+T1.is_leaf = lambda v: len(list(T1.N(v))) == 0
+T2.is_leaf = lambda v: len(list(T2.N(v))) == 0
+
+print(calcularAlturas(T1))
+print(calcularAlturas(T2))
