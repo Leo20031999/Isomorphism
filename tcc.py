@@ -31,8 +31,8 @@ def OptimalTopDownCommonSubtree(T1,v,T2,u,Mp, memo = None):
     for y in T2.adj_list.get(u,[]):
         Gvu.AdicionarAresta(dum_v, y)
 
-    heightsT1 = T1.heights()
-    heightsT2 = T2.heights()
+    heightsT1 = T1.altura()
+    heightsT2 = T2.altura()
 
     edge_weights = {}
 
@@ -51,7 +51,7 @@ def OptimalTopDownCommonSubtree(T1,v,T2,u,Mp, memo = None):
     
     Gvu.adj_list = edge_weights
 
-    Mvu = solveOptimalPatternMatching(Gvu)
+    Mvu = solveOptimalPerfectMatching(Gvu)
     distance = max(edge_weights.get((u,v), 0) for u,v in Mvu)
     Mvu = {e for e in Mvu if not (is_dummy_vertex(e[0]) or is_dummy_vertex(e[1]))}
     Mp.update(Mvu)
@@ -73,14 +73,6 @@ def reconstructionOfMapping(T1, r1,r2, Mp, M):
                     M.add(v,u)
     return M
 
-#checar preorder e ver qual é a melhor assinatura para esse método
-def preorder(T, vertex):
-    traversal = [node]
-    if node in T:
-        for child in T[node]:
-            traversal.extend(preorder(T,child))
-    return traversal
-
 def parent(T, vertex):
     for parent, children in T.items():
         if vertex in children:
@@ -88,11 +80,13 @@ def parent(T, vertex):
         return None
 
 def hopcroft_karp(graph, left_set, right_set):
+
     pair_u = {u: None for u in left_set}
     pair_v = {v: None for v in right_set}
     dist = {}
 
     def bfs():
+
         queue = deque()
         for u in left_set:
             if pair_u[u] is None:
@@ -101,39 +95,43 @@ def hopcroft_karp(graph, left_set, right_set):
             else:
                 dist[u] = float('inf')
         dist[None] = float('inf')
+
         while queue:
             u = queue.popleft()
             if dist[u] < dist[None]:
-                for v in graph.adj_list.get(u,[]):
-                    if dist[pair_v[v]] == float('inf'):
-                        dist[pair_v[v]] = dist[u] + 1
-                        queue.append(pair_v[v])
+                for v in graph.N(u):
+                    if pair_v[v] is None:
+                        if dist.get(pair_v[v], float('inf')) == float('inf'):
+                            dist[pair_v[v]] = dist[u] + 1
+                            queue.append(pair_v[v])
         return dist[None] != float('inf')
     
     def dfs(u):
-        if u is None:
-            for v in graph.adj_list.get(u,[]):
-                if dist[pair_v[v]] == dist[u] + 1 and dfs(pair_v[v]):
-                    pair_v[v] = u
-                    pair_u[u] = v
-                    return True
+        if u is not None:
+            for v in graph.N(u):
+                if dist.get(pair_v[v], float('inf')) == dist[u] + 1:
+                    if pair_v[v] is None or dfs(pair_v[v]):
+                        pair_v[v] = u
+                        pair_u[u] = v
+                        return True
             dist[u] = float('inf')
-            return True
-        return False
+            return False
+        return True
     
     matching = set()
     while bfs():
         for u in left_set:
             if pair_u[u] is None and dfs(u):
                 matching.add((u, pair_u[u]))
+    print("hopcroft_karp terminado")
     return matching
 
 
-def solveOptimalPatternMatching(Gvu):
-    if not isinstance(Gvu,WeightedGraph):
-        raise TypeError("Gvu must be an instance of WeightedGraph")
+def solveOptimalPerfectMatching(Gvu):
+    if not isinstance(Gvu,listaAdj):
+        raise TypeError("Gvu must be an instance of listaAdj")
 
-    edge_weights = sorted(set(Gvu.get_weight(u,v) for u,v in Gvu.get_edges()))
+    edge_weights = sorted(set(Gvu.getPeso(u,v) for u,v in Gvu.E()))
 
     left, right = 0, len(edge_weights) - 1
     best_matching = set()
@@ -143,12 +141,18 @@ def solveOptimalPatternMatching(Gvu):
         mid = (left+right) // 2
         weight_threshold = edge_weights[mid]
 
-        subgraph = WeightedGraph()
-        for u,v in Gvu.get_edges():
-            if Gvu.get_weight(u,v) <= weight_threshold:
-                subgraph.add_edge(u,v,Gvu.get_weight(u,v))
-        left_set = set(u for u in subgraph.adj_list.keys())
-        right_set = set(v for neighbors in subgraph.adj_list.values() for v in neighbors)
+        subgraph = listaAdj(orientado=False)
+        subgraph.DefinirN(Gvu.n)
+        for u,v in Gvu.E():
+            if Gvu.getPeso(u,v) <= weight_threshold:
+                subgraph.AdicionarAresta(u,v)
+        left_set = set(subgraph.V())
+        right_set = set()
+
+        for v in left_set:
+            vizinhos = list(subgraph.N(v))
+            if vizinhos:
+                right_set.add(v)
 
         matching = hopcroft_karp(subgraph, left_set, right_set)
 
@@ -158,7 +162,6 @@ def solveOptimalPatternMatching(Gvu):
             right = mid - 1
         else:
             left = mid + 1
-    
     return best_matching
 
 def calcularAlturas(T):
@@ -199,28 +202,19 @@ def hausdorffDistanceBetweenTrees(grafo1, grafo2):
     reconstructionOfMapping(grafo1,r1,r2,O,M)
     return hd, M
 
-T1 = listaAdj(orientado=False)
-T2 = listaAdj(orientado=False) 
+G = listaAdj(orientado=False)
+G.DefinirN(5)
 
+G.AdicionarAresta(1, 2)
+G.AdicionarAresta(1, 3)
+G.AdicionarAresta(2, 4)
+G.AdicionarAresta(2, 5)
 
-T1.DefinirN(5)
-T2.DefinirN(4) 
+def calcular_alturas(grafo):
+    alturas = {}
+    for v in range(1, grafo.n + 1):
+        alturas[v] = grafo.compute_height(v)
+    return alturas
 
-T1.AdicionarAresta(1, 2)
-T1.AdicionarAresta(1, 3)
-T1.AdicionarAresta(2, 4)
-T1.AdicionarAresta(2, 5)
-
-T2.AdicionarAresta(1, 2)
-T2.AdicionarAresta(1, 3)
-T2.AdicionarAresta(3, 4)
-
-T1.heights = lambda: calcularAlturas(T1)
-T2.heights = lambda: calcularAlturas(T2)
-
-
-T1.is_leaf = lambda v: len(list(T1.N(v))) == 0
-T2.is_leaf = lambda v: len(list(T2.N(v))) == 0
-
-print(calcularAlturas(T1))
-print(calcularAlturas(T2))
+alturas = calcular_alturas(G)
+print("Alturas dos vértices:", alturas)

@@ -6,11 +6,13 @@ class listaAdj(Grafo):
             self.Viz = None
             self.e = None
             self.Prox = None
+            self.Peso = 0
     
     class Aresta(object):
         def __init__(self):
             self.v1, self.No1 = None, None
             self.v2, self.No2 = None, None
+            self.Peso = 0 
 
     def DefinirN(self, n, VizinhancaDuplamenteLigada = False):
         super(listaAdj, self).DefinirN(n)
@@ -19,10 +21,12 @@ class listaAdj(Grafo):
             self.L[i] = listaAdj.NoAresta()
         self.VizinhancaDuplamenteLigada = VizinhancaDuplamenteLigada
 
-    def AdicionarAresta(self, u, v):
+    def AdicionarAresta(self, u, v, peso = 0):
+        if self.SaoAdj(u,v):
+            return None
         def AdicionarLista(u, v, e, Tipo):
             No = listaAdj.NoAresta()
-            No.Viz,No.e,No.Prox = v, e, self.L[u].Prox
+            No.Viz,No.e,No.Prox, No.Peso = v, e, self.L[u].Prox, peso
             self.L[u].Prox=No
             return No
         
@@ -30,7 +34,9 @@ class listaAdj(Grafo):
         e.v1, e.v2 = u, v
         e.No1 = AdicionarLista(u,v,e,"+")
         if not self.orientado:
-            e.No2 = AdicionarLista(v,u,e,"-")
+            if not self.SaoAdj(v,u):
+                e.No2 = AdicionarLista(v,u,e,"-")
+        e.Peso = peso
         self.m = self.m+1
         return e
         
@@ -43,11 +49,10 @@ class listaAdj(Grafo):
         RemoverLista(uv.No2)
     
     def SaoAdj(self, u, v):
-        Tipo = "+" if self.orientado else "*"
-        for w in self.N(u, Tipo):
-            if w == v:
+        for w in self.N(u):
+            if w==v:
                 return True
-            return False
+        return False
         
     def N(self, v , Tipo = "*", Fechada = False, IterarSobreNo=False):
         if Fechada:
@@ -59,4 +64,35 @@ class listaAdj(Grafo):
             if Tipo == "*" or w.Tipo == Tipo:
                 yield w if IterarSobreNo else w.Viz
             w = w.Prox
+    
+    def getPeso(self, u, v):
+        for w in self.N(u):
+            if w == v:
+                return self.L[u].Prox.Peso
+        return None
+    
+    def is_leaf(self, v):
+        return self.L[v].Prox is None
+    
+    def compute_height(self, root):
+        stack = [(root,0)]
+        max_height = 0
+        visited = set()
+
+        while stack:
+            current_vertex, current_height = stack.pop()
+            if current_vertex not in visited:
+                visited.add(current_vertex)
+                max_height = max(current_height, max_height)
+                w = self.L[current_vertex].Prox
+                while w is not None:
+                    stack.append((w.Viz,current_height+1))
+                    w = w.Prox
+        return max_height+1
+    
+    def altura(self):
+        altura = {}
+        for v in range(1, self.n+1):
+            altura[v] = self.compute_height(v)
+        return altura
     
