@@ -73,13 +73,24 @@ def reconstructionOfMapping(T1, r1,r2, Mp, M):
                     M.add(v,u)
     return M
 
+def preorder(T):
+    result = []
+    stack = [1]
+    while stack:
+        v = stack.pop()
+        result.append(v)
+
+        for filho in reversed(list(T.N(v))):
+            stack.append(filho)
+    return result
+
 def parent(T, vertex):
     for parent, children in T.items():
         if vertex in children:
             return parent
         return None
 
-def hopcroft_karp(graph, left_set, right_set):
+def hopcroft_karp(graph, left_set, right_set): #FUNCIONA
 
     pair_u = {u: None for u in left_set}
     pair_v = {v: None for v in right_set}
@@ -164,7 +175,7 @@ def solveOptimalPerfectMatching(Gvu):
             left = mid + 1
     return best_matching
 
-def calcularAlturas(T):
+def calcularAlturas(T): #FUNCIONA
     alturas ={}
     def dfs(v, altura_atual, visitado):
         visitado[v] = True
@@ -175,8 +186,6 @@ def calcularAlturas(T):
     visitado = [False] * (T.n + 1)
     dfs(1,0,visitado)
     return alturas
-
-
 
 def hausdorffDistanceBetweenTrees(grafo1, grafo2):
     hd = float('inf')
@@ -202,19 +211,16 @@ def hausdorffDistanceBetweenTrees(grafo1, grafo2):
     reconstructionOfMapping(grafo1,r1,r2,O,M)
     return hd, M
 
-G = listaAdj(orientado=False)
-G.DefinirN(5)
+def print_vertex(v):
+    print(f'Vertice: {v}')
 
-G.AdicionarAresta(1, 2)
-G.AdicionarAresta(1, 3)
-G.AdicionarAresta(2, 4)
-G.AdicionarAresta(2, 5)
+# Exemplo de como usar a função preorder
+grafo = listaAdj()
+grafo.DefinirN(5)  # Define 5 vértices
+grafo.AdicionarAresta(1, 2)
+grafo.AdicionarAresta(1, 3)
+grafo.AdicionarAresta(2, 4)
+grafo.AdicionarAresta(2, 5)
 
-def calcular_alturas(grafo):
-    alturas = {}
-    for v in range(1, grafo.n + 1):
-        alturas[v] = grafo.compute_height(v)
-    return alturas
-
-alturas = calcular_alturas(G)
-print("Alturas dos vértices:", alturas)
+# Fazendo a travessia em pré-ordem a partir do vértice 1
+grafo.preorder(1, print_vertex)

@@ -74,25 +74,11 @@ class listaAdj(Grafo):
     def is_leaf(self, v):
         return self.L[v].Prox is None
     
-    def compute_height(self, root):
-        stack = [(root,0)]
-        max_height = 0
-        visited = set()
-
-        while stack:
-            current_vertex, current_height = stack.pop()
-            if current_vertex not in visited:
-                visited.add(current_vertex)
-                max_height = max(current_height, max_height)
-                w = self.L[current_vertex].Prox
-                while w is not None:
-                    stack.append((w.Viz,current_height+1))
-                    w = w.Prox
-        return max_height+1
-    
-    def altura(self):
-        altura = {}
-        for v in range(1, self.n+1):
-            altura[v] = self.compute_height(v)
-        return altura
-    
+    def preorder(self,v,visit):
+        pilha = [v]
+        while pilha:
+            atual = pilha.pop()
+            visit(atual)
+            for w in reversed(list(self.N(atual))):
+                pilha.append(w)
+        
