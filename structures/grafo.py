@@ -11,6 +11,7 @@ class Grafo(object):
             yield i
     
     def E(self, IterarSobreNo = False):
+        enumerar = False
         for v in self.V():
             for w in self.N(v, Tipo = "+" if self.orientado else "*", IterarSobreNo = IterarSobreNo):
                 enumerar = True

@@ -63,32 +63,28 @@ def OptimalTopDownCommonSubtree(T1,v,T2,u,Mp, memo = None):
 def is_dummy_vertex(vertex):
     return isinstance(vertex, str) and vertex.startswith("dum")
 
-def reconstructionOfMapping(T1, r1,r2, Mp, M):
+def reconstructionOfMapping(T1, r1,r2, Mp, M): #FUNCIONA
     M.add((r1,r2))
-    P1 = preorder(T1)
+    P1 = []
+    def visit(v):
+        P1.append(v)
+    preorder(T1,r1,visit)
     for v in P1:
-        for (vertex, u) in Mp:
+        for(vertex,u) in Mp:
             if vertex == v:
-                if (parent(T1, v), parent(T1, u)) in M:
-                    M.add(v,u)
+                u_parent = parent(T1,u)
+                v_parent = parent(T1,v)
+                if (u_parent, v_parent) in M:
+                    M.add((v,u))
     return M
 
-def preorder(T):
-    result = []
-    stack = [1]
-    while stack:
-        v = stack.pop()
-        result.append(v)
-
-        for filho in reversed(list(T.N(v))):
-            stack.append(filho)
-    return result
-
-def parent(T, vertex):
-    for parent, children in T.items():
-        if vertex in children:
-            return parent
-        return None
+def parent(T, v):
+    for u in T.N(v):
+        if T.is_leaf(u):
+            continue
+        if u!=v:
+            return u
+    return None
 
 def hopcroft_karp(graph, left_set, right_set): #FUNCIONA
 
@@ -133,7 +129,8 @@ def hopcroft_karp(graph, left_set, right_set): #FUNCIONA
     while bfs():
         for u in left_set:
             if pair_u[u] is None and dfs(u):
-                matching.add((u, pair_u[u]))
+                if pair_u[u] is not None:
+                    matching.add((min(u, pair_u[u]), max(u, pair_u[u])))
     print("hopcroft_karp terminado")
     return matching
 
@@ -157,17 +154,21 @@ def solveOptimalPerfectMatching(Gvu):
         for u,v in Gvu.E():
             if Gvu.getPeso(u,v) <= weight_threshold:
                 subgraph.AdicionarAresta(u,v)
+
+        print(f"Subgrafo com peso <= {weight_threshold}: {[ (u, v) for u, v in subgraph.E() ]}")
         left_set = set(subgraph.V())
-        right_set = set()
+        right_set = {v for u in left_set for v in subgraph.N(u) }
 
         for v in left_set:
             vizinhos = list(subgraph.N(v))
             if vizinhos:
-                right_set.add(v)
+                right_set.update(vizinhos)
 
         matching = hopcroft_karp(subgraph, left_set, right_set)
-
-        if len(matching) == len(left_set):
+        print(f"Conjunto esquerdo: {left_set}")
+        print(f"Conjunto direito: {right_set}")
+        print(f"Emparelhamento encontrado com peso <= {weight_threshold}: {matching}")
+        if len(matching) * 2 == len(left_set) and len(left_set) % 2 == 0:
             best_matching = matching
             best_weight = weight_threshold
             right = mid - 1
@@ -211,16 +212,37 @@ def hausdorffDistanceBetweenTrees(grafo1, grafo2):
     reconstructionOfMapping(grafo1,r1,r2,O,M)
     return hd, M
 
-def print_vertex(v):
-    print(f'Vertice: {v}')
+def preorder(graph,v,visit): #funciona
+    pilha = [v]
+    visitados = set()
+    while pilha:
+        atual = pilha.pop()
+        if atual in visitados:
+            continue
+        visitados.add(atual)
+        visit(atual)
+        for w in list(graph.N(atual)):
+            if w not in visitados:
+                pilha.append(w)
 
-# Exemplo de como usar a função preorder
-grafo = listaAdj()
-grafo.DefinirN(5)  # Define 5 vértices
-grafo.AdicionarAresta(1, 2)
-grafo.AdicionarAresta(1, 3)
-grafo.AdicionarAresta(2, 4)
-grafo.AdicionarAresta(2, 5)
+def test_complex_perfect_matching():
+    Gvu = listaAdj(orientado=False)
+    Gvu.DefinirN(10)  # Definindo 10 vértices
 
-# Fazendo a travessia em pré-ordem a partir do vértice 1
-grafo.preorder(1, print_vertex)
+    # Adicionando arestas com pesos
+    Gvu.AdicionarAresta(1, 2, peso=1)
+    Gvu.AdicionarAresta(2, 3, peso=1)
+    Gvu.AdicionarAresta(3, 4, peso=2)
+    Gvu.AdicionarAresta(4, 5, peso=2)
+    Gvu.AdicionarAresta(5, 6, peso=1)
+    Gvu.AdicionarAresta(6, 7, peso=1)
+    Gvu.AdicionarAresta(7, 8, peso=2)
+    Gvu.AdicionarAresta(8, 9, peso=2)
+    Gvu.AdicionarAresta(9, 10, peso=1)
+    Gvu.AdicionarAresta(1, 10, peso=3)  # Conexão extra, mas com peso alto
+
+    resultado = solveOptimalPerfectMatching(Gvu)
+    print(f"Emparelhamento perfeito ótimo: {resultado}")
+
+# Executando o teste
+test_complex_perfect_matching()

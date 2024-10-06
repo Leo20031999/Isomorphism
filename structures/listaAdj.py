@@ -22,9 +22,15 @@ class listaAdj(Grafo):
         self.VizinhancaDuplamenteLigada = VizinhancaDuplamenteLigada
 
     def AdicionarAresta(self, u, v, peso = 0):
+        if u<1 or u > self.n or v < 1 or v > self.n:
+            print(f"Erro ao tentar adicionar aresta {u} {v}")
+            return None
         if self.SaoAdj(u,v):
             return None
-        def AdicionarLista(u, v, e, Tipo):
+        if self.SaoAdj(u,v):
+            print(f"Aresta {u} - {v} já existe")
+            return None
+        def AdicionarLista(u, v, e):
             No = listaAdj.NoAresta()
             No.Viz,No.e,No.Prox, No.Peso = v, e, self.L[u].Prox, peso
             self.L[u].Prox=No
@@ -32,10 +38,10 @@ class listaAdj(Grafo):
         
         e = listaAdj.Aresta()
         e.v1, e.v2 = u, v
-        e.No1 = AdicionarLista(u,v,e,"+")
+        e.No1 = AdicionarLista(u,v,e)
         if not self.orientado:
             if not self.SaoAdj(v,u):
-                e.No2 = AdicionarLista(v,u,e,"-")
+                e.No2 = AdicionarLista(v,u,e)
         e.Peso = peso
         self.m = self.m+1
         return e
@@ -55,6 +61,8 @@ class listaAdj(Grafo):
         return False
         
     def N(self, v , Tipo = "*", Fechada = False, IterarSobreNo=False):
+        if v < 1 or v > self.n:
+            return
         if Fechada:
             No = listaAdj.NoAresta()
             No.Viz, No.e, No.Prox = v, None, None
@@ -74,11 +82,5 @@ class listaAdj(Grafo):
     def is_leaf(self, v):
         return self.L[v].Prox is None
     
-    def preorder(self,v,visit):
-        pilha = [v]
-        while pilha:
-            atual = pilha.pop()
-            visit(atual)
-            for w in reversed(list(self.N(atual))):
-                pilha.append(w)
+
         
