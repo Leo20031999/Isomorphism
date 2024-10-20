@@ -26,8 +26,6 @@ class listaAdj(Grafo):
             print(f"Erro ao tentar adicionar aresta {u} {v}")
             return None
         if self.SaoAdj(u,v):
-            return None
-        if self.SaoAdj(u,v):
             print(f"Aresta {u} - {v} já existe")
             return None
         def AdicionarLista(u, v, e):
@@ -73,10 +71,27 @@ class listaAdj(Grafo):
                 yield w if IterarSobreNo else w.Viz
             w = w.Prox
     
+    def setPeso(self, u, v, peso):
+        no = self.L[u].Prox
+        while no is not None:
+            if no.Viz == v:
+                no.Peso = peso
+                break
+            no = no.Prox
+        if not self.orientado:
+            no = self.L[v].Prox
+            while no is not None:
+                if no.Viz == u:
+                    no.Peso = peso
+                    break
+                no = no.Prox
+
     def getPeso(self, u, v):
-        for w in self.N(u):
-            if w == v:
-                return self.L[u].Prox.Peso
+        no = self.L[u].Prox
+        while no is not None:
+            if no.Viz == v:
+                return no.Peso
+            no = no.Prox
         return None
     
     def is_leaf(self, v):

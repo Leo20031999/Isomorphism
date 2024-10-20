@@ -86,14 +86,12 @@ def parent(T, v):
             return u
     return None
 
-def hopcroft_karp(graph, left_set, right_set): #FUNCIONA
-
+def hopcroft_karp(graph, left_set, right_set): #Funciona
     pair_u = {u: None for u in left_set}
     pair_v = {v: None for v in right_set}
     dist = {}
 
     def bfs():
-
         queue = deque()
         for u in left_set:
             if pair_u[u] is None:
@@ -107,74 +105,75 @@ def hopcroft_karp(graph, left_set, right_set): #FUNCIONA
             u = queue.popleft()
             if dist[u] < dist[None]:
                 for v in graph.N(u):
-                    if pair_v[v] is None:
-                        if dist.get(pair_v[v], float('inf')) == float('inf'):
+                    if v in pair_v:
+                        if pair_v[v] is None:
+                            dist[None] = dist[u] + 1
+                        elif dist.get(pair_v[v], float('inf')) == float('inf'):
                             dist[pair_v[v]] = dist[u] + 1
                             queue.append(pair_v[v])
         return dist[None] != float('inf')
-    
+
     def dfs(u):
         if u is not None:
             for v in graph.N(u):
-                if dist.get(pair_v[v], float('inf')) == dist[u] + 1:
-                    if pair_v[v] is None or dfs(pair_v[v]):
-                        pair_v[v] = u
-                        pair_u[u] = v
-                        return True
+                if v in pair_v:
+                    if dist.get(pair_v[v], float('inf')) == dist[u] + 1:
+                        if pair_v[v] is None or dfs(pair_v[v]):
+                            pair_v[v] = u
+                            pair_u[u] = v
+                            return True
             dist[u] = float('inf')
             return False
         return True
-    
+
     matching = set()
     while bfs():
         for u in left_set:
             if pair_u[u] is None and dfs(u):
-                if pair_u[u] is not None:
-                    matching.add((min(u, pair_u[u]), max(u, pair_u[u])))
-    print("hopcroft_karp terminado")
+                matching.add((u, pair_u[u]))
+
     return matching
 
-
-def solveOptimalPerfectMatching(Gvu):
-    if not isinstance(Gvu,listaAdj):
+def solveOptimalPerfectMatching(Gvu): #funciona
+    if not isinstance(Gvu, listaAdj):
         raise TypeError("Gvu must be an instance of listaAdj")
 
-    edge_weights = sorted(set(Gvu.getPeso(u,v) for u,v in Gvu.E()))
-
+    edge_weights = sorted(set(Gvu.getPeso(u, v) for u, v in Gvu.E()))
     left, right = 0, len(edge_weights) - 1
     best_matching = set()
     best_weight = float('inf')
 
-    while left<=right:
-        mid = (left+right) // 2
+    while left <= right:
+        mid = (left + right) // 2
         weight_threshold = edge_weights[mid]
 
         subgraph = listaAdj(orientado=False)
         subgraph.DefinirN(Gvu.n)
-        for u,v in Gvu.E():
-            if Gvu.getPeso(u,v) <= weight_threshold:
-                subgraph.AdicionarAresta(u,v)
+        for u, v in Gvu.E():
+            if Gvu.getPeso(u, v) <= weight_threshold:
+                subgraph.AdicionarAresta(u, v)
 
         print(f"Subgrafo com peso <= {weight_threshold}: {[ (u, v) for u, v in subgraph.E() ]}")
-        left_set = set(subgraph.V())
-        right_set = {v for u in left_set for v in subgraph.N(u) }
 
-        for v in left_set:
-            vizinhos = list(subgraph.N(v))
-            if vizinhos:
-                right_set.update(vizinhos)
+        left_set = {u for u in subgraph.V() if subgraph.N(u)}  
+        right_set = {v for u in left_set for v in subgraph.N(u)}
 
-        matching = hopcroft_karp(subgraph, left_set, right_set)
         print(f"Conjunto esquerdo: {left_set}")
         print(f"Conjunto direito: {right_set}")
+
+        matching = hopcroft_karp(subgraph, left_set, right_set)
         print(f"Emparelhamento encontrado com peso <= {weight_threshold}: {matching}")
-        if len(matching) * 2 == len(left_set) and len(left_set) % 2 == 0:
-            best_matching = matching
+
+        if len(matching) == len(left_set):
+            best_matching = matching  
             best_weight = weight_threshold
+            print(f"Emparelhamento perfeito encontrado com peso {best_weight}: {best_matching}")
             right = mid - 1
         else:
+            print(f"Emparelhamento não é perfeito. Tentando próximo peso.")
             left = mid + 1
-    return best_matching
+
+    return best_matching if best_matching and len(best_matching) == len(left_set) else set()
 
 def calcularAlturas(T): #FUNCIONA
     alturas ={}
@@ -225,24 +224,24 @@ def preorder(graph,v,visit): #funciona
             if w not in visitados:
                 pilha.append(w)
 
-def test_complex_perfect_matching():
-    Gvu = listaAdj(orientado=False)
-    Gvu.DefinirN(10)  # Definindo 10 vértices
-
+def teste_solve_optimal_perfeito_complexo():
+    grafo_teste = listaAdj(orientado=False)
+    grafo_teste.DefinirN(15)
+    
     # Adicionando arestas com pesos
-    Gvu.AdicionarAresta(1, 2, peso=1)
-    Gvu.AdicionarAresta(2, 3, peso=1)
-    Gvu.AdicionarAresta(3, 4, peso=2)
-    Gvu.AdicionarAresta(4, 5, peso=2)
-    Gvu.AdicionarAresta(5, 6, peso=1)
-    Gvu.AdicionarAresta(6, 7, peso=1)
-    Gvu.AdicionarAresta(7, 8, peso=2)
-    Gvu.AdicionarAresta(8, 9, peso=2)
-    Gvu.AdicionarAresta(9, 10, peso=1)
-    Gvu.AdicionarAresta(1, 10, peso=3)  # Conexão extra, mas com peso alto
-
-    resultado = solveOptimalPerfectMatching(Gvu)
-    print(f"Emparelhamento perfeito ótimo: {resultado}")
+    arestas = [
+        (1, 2, 3), (1, 3, 2), (2, 4, 1), (2, 5, 4), (3, 6, 1), (3, 7, 3),
+        (4, 8, 2), (4, 9, 3), (5, 10, 1), (6, 11, 2), (7, 12, 3), 
+        (8, 13, 1), (9, 14, 2), (10, 15, 1), (11, 12, 2), (13, 14, 4), 
+        (14, 15, 3)
+    ]
+    
+    for u, v, weight in arestas:
+        grafo_teste.AdicionarAresta(u, v)
+        grafo_teste.setPeso(u, v, weight)
+    
+    resultado = solveOptimalPerfectMatching(grafo_teste)
+    print(f"Resultado do emparelhamento ótimo: {resultado}")
 
 # Executando o teste
-test_complex_perfect_matching()
+teste_solve_optimal_perfeito_complexo()

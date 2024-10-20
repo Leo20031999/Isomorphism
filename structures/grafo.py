@@ -11,14 +11,11 @@ class Grafo(object):
             yield i
     
     def E(self, IterarSobreNo = False):
-        enumerar = False
-        for v in self.V():
-            for w in self.N(v, Tipo = "+" if self.orientado else "*", IterarSobreNo = IterarSobreNo):
-                enumerar = True
-                if not self.orientado:
-                    wint = w if isinstance(w,int) else w.Viz
-                    enumerar = v < wint
-            if enumerar:
-                yield(v,w)
-
+        arestas = set()
+        for u in range(1, self.n + 1):
+            w = self.L[u].Prox
+            while w is not None:
+                arestas.add((min(u, w.Viz), max(u, w.Viz)))
+                w = w.Prox
+        return list(arestas)
 
