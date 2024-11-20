@@ -1,34 +1,37 @@
-from structures.listaAdj import listaAdj
+from structures.listaAdj import ListaAdjG
 from collections import deque
+import networkx as nx
+import random
 
-def OptimalTopDownCommonSubtree(T1,v,T2,u,Mp, memo = None):
+
+def OptimalTopDownCommonSubtree(T1, v, T2, u, Mp, memo=None):
     if memo is None:
         memo = {}
 
-    if (v,u) in memo:
-        return memo[(v,u)]
-    
-    if v not in T1.adj_list or u not in T2.adj_list:
+    if (v, u) in memo:
+        return memo[(v, u)]
+
+    if not T1.G.has_node(v) or not T2.G.has_node(u):
         raise ValueError(f"Vertex {v} or {u} not found in respective trees")
-    
+
     if T1.is_leaf(v) or T2.is_leaf(u):
-        result = (max(T1.heights().get(v,0), T2.heights().get(u,0)), Mp)
-        memo[(v,u)] = result
+        result = (max(T1.altura().get(v, 0), T2.altura().get(u, 0)), Mp)
+        memo[(v, u)] = result
         return result
-    
-    Gvu = listaAdj(orientado=False)
+
+    Gvu = ListaAdjG(orientado=False)
     Gvu.DefinirN(T1.n + T2.n + 2)
 
-    for i in T1.adj_list.get(v,[]):
-        for j in T2.adj_list.get(u, []):
-            Gvu.AdicionarAresta(i,j)
+    for i in T1.G.neighbors(v):
+        for j in T2.G.neighbors(u):
+            Gvu.AdicionarAresta(i, j)
 
     dum_v = T1.n + 1
     dum_u = T1.n + 2
 
-    for x in T1.adj_list.get(v,[]):
-        Gvu.AdicionarAresta(x,dum_u)
-    for y in T2.adj_list.get(u,[]):
+    for x in T1.G.neighbors(v):
+        Gvu.AdicionarAresta(x, dum_u)
+    for y in T2.G.neighbors(u):
         Gvu.AdicionarAresta(dum_v, y)
 
     heightsT1 = T1.altura()
@@ -36,57 +39,93 @@ def OptimalTopDownCommonSubtree(T1,v,T2,u,Mp, memo = None):
 
     edge_weights = {}
 
-    for u_vertex in Gvu.V():
-        for v_vertex in Gvu.V():
+    for u_vertex in Gvu.G.nodes:
+        for v_vertex in Gvu.G.nodes:
             if u_vertex == dum_v:
-                edge_weights[(u_vertex,v_vertex)] = heightsT2.get(v_vertex, 0) + 1
+                edge_weights[(u_vertex, v_vertex)] = heightsT2.get(v_vertex, 0) + 1
             elif v_vertex == dum_u:
-                edge_weights[(u_vertex,v_vertex)] = heightsT1.get(u_vertex, 0) + 1
+                edge_weights[(u_vertex, v_vertex)] = heightsT1.get(u_vertex, 0) + 1
             else:
-                if u_vertex in T1.adj_list and v_vertex in T2.adj_list:
+                if u_vertex in T1.G.nodes and v_vertex in T2.G.nodes:
                     sub_distance, _ = OptimalTopDownCommonSubtree(T1, u_vertex, T2, v_vertex, Mp, memo)
-                    edge_weights[(u_vertex,v_vertex)] = sub_distance
+                    edge_weights[(u_vertex, v_vertex)] = sub_distance
                 else:
-                    edge_weights[(u_vertex,v_vertex)] = 0
-    
-    Gvu.adj_list = edge_weights
+                    edge_weights[(u_vertex, v_vertex)] = 0
+
+    Gvu.G.graph['edge_weights'] = edge_weights
 
     Mvu = solveOptimalPerfectMatching(Gvu)
-    distance = max(edge_weights.get((u,v), 0) for u,v in Mvu)
-    Mvu = {e for e in Mvu if not (is_dummy_vertex(e[0]) or is_dummy_vertex(e[1]))}
+    distance = max(edge_weights.get((u, v), 0) for u, v in Mvu)
+    Mvu = {e for e in Mvu if not is_dummy_vertex(e[0]) and not is_dummy_vertex(e[1])}
     Mp.update(Mvu)
 
     result = (distance, Mp)
-    memo[(v,u)] = result
+    memo[(v, u)] = result
     return result
 
-def is_dummy_vertex(vertex):
-    return isinstance(vertex, str) and vertex.startswith("dum")
+def solveOptimalPerfectMatching(Gvu):
+    if not isinstance(Gvu, ListaAdjG):
+        raise TypeError("Gvu must be an instance of ListaAdjG")
 
-def reconstructionOfMapping(T1, r1,r2, Mp, M): #FUNCIONA
-    M.add((r1,r2))
-    P1 = []
-    def visit(v):
-        P1.append(v)
-    preorder(T1,r1,visit)
-    for v in P1:
-        for(vertex,u) in Mp:
-            if vertex == v:
-                u_parent = parent(T1,u)
-                v_parent = parent(T1,v)
-                if (u_parent, v_parent) in M:
-                    M.add((v,u))
-    return M
+    # Obter todos os pesos das arestas e ordená-los
+    edge_weights = sorted(set(Gvu.getPeso(u, v) for u, v in Gvu.G.edges))
+    print("Pesos das arestas:", edge_weights)
 
-def parent(T, v):
-    for u in T.N(v):
-        if T.is_leaf(u):
-            continue
-        if u!=v:
-            return u
-    return None
+    left, right = 0, len(edge_weights) - 1
+    best_matching = set()
+    best_weight = float('inf')
 
-def hopcroft_karp(graph, left_set, right_set): #Funciona
+    # Algoritmo de busca binária sobre os pesos
+    while left <= right:
+        mid = (left + right) // 2
+        weight_threshold = edge_weights[mid]
+        print(f"Threshold de peso: {weight_threshold}")
+
+        # Criar subgrafo com as arestas válidas para o peso atual
+        subgraph = nx.Graph()
+        subgraph.add_nodes_from(range(1, Gvu.n + 1))
+
+        for u, v in Gvu.G.edges:
+            if Gvu.getPeso(u, v) <= weight_threshold:
+                subgraph.add_edge(u, v)
+
+        # Definindo corretamente os conjuntos esquerdo e direito
+        left_set = {u for u in range(1, Gvu.n + 1) if u % 2 == 1}
+        right_set = {u for u in range(1, Gvu.n + 1) if u % 2 == 0}
+
+        print(f"Conjunto esquerdo: {left_set}")
+        print(f"Conjunto direito: {right_set}")
+
+        # Filtrando as arestas que conectam apenas os conjuntos esquerdo e direito
+        valid_edges = [(u, v) for u, v in subgraph.edges if u in left_set and v in right_set]
+        print(f"Arestas válidas entre os conjuntos: {valid_edges}")
+
+        subgraph.clear_edges()
+        subgraph.add_edges_from(valid_edges)
+
+        # Encontrar o emparelhamento máximo bipartido
+        matching = nx.bipartite.maximum_matching(subgraph, top_nodes=left_set)
+        print(f"Emparelhamento encontrado: {matching}")
+
+        # Ajustando o formato do emparelhamento (bipartite.maximum_matching retorna um dicionário)
+        matching_set = set((u, v) for u, v in matching.items() if u in left_set)
+
+        # Se o emparelhamento for perfeito (tamanho dos conjuntos esquerdo e direito coincidirem)
+        print(f"Emparelhamento final: {matching_set}")
+        print(f"Tamanho do emparelhamento: {len(matching_set)}")
+        print(f"Tamanho do conjunto esquerdo: {len(left_set)}")
+
+        if len(matching_set) == len(left_set) and all(v in right_set for u, v in matching_set):
+            best_matching = matching_set
+            best_weight = weight_threshold
+            right = mid - 1
+        else:
+            left = mid + 1
+
+    print("Emparelhamento ótimo perfeito:", best_matching)
+    return best_matching if best_matching and len(best_matching) == len(left_set) else set()
+
+def hopcroft_karp(graph, left_set, right_set): #funciona
     pair_u = {u: None for u in left_set}
     pair_v = {v: None for v in right_set}
     dist = {}
@@ -134,114 +173,22 @@ def hopcroft_karp(graph, left_set, right_set): #Funciona
 
     return matching
 
-def solveOptimalPerfectMatching(Gvu): #funciona
-    if not isinstance(Gvu, listaAdj):
-        raise TypeError("Gvu must be an instance of listaAdj")
+# Criar um novo grafo
+G = ListaAdjG()
+G.DefinirN(6)
 
-    edge_weights = sorted(set(Gvu.getPeso(u, v) for u, v in Gvu.E()))
-    left, right = 0, len(edge_weights) - 1
-    best_matching = set()
-    best_weight = float('inf')
+# Adicionar arestas com pesos
+G.AdicionarAresta(1, 2, 5)
+G.AdicionarAresta(1, 3, 2)
+G.AdicionarAresta(1, 4, 6)
+G.AdicionarAresta(2, 4, 1)
+G.AdicionarAresta(2, 5, 3)
+G.AdicionarAresta(3, 5, 4)
+G.AdicionarAresta(3, 6, 7)
+G.AdicionarAresta(4, 6, 8)
 
-    while left <= right:
-        mid = (left + right) // 2
-        weight_threshold = edge_weights[mid]
+# Chamar o método solveOptimalPerfectMatching
+resultado = solveOptimalPerfectMatching(G)
 
-        subgraph = listaAdj(orientado=False)
-        subgraph.DefinirN(Gvu.n)
-        for u, v in Gvu.E():
-            if Gvu.getPeso(u, v) <= weight_threshold:
-                subgraph.AdicionarAresta(u, v)
-
-        print(f"Subgrafo com peso <= {weight_threshold}: {[ (u, v) for u, v in subgraph.E() ]}")
-
-        left_set = {u for u in subgraph.V() if subgraph.N(u)}  
-        right_set = {v for u in left_set for v in subgraph.N(u)}
-
-        print(f"Conjunto esquerdo: {left_set}")
-        print(f"Conjunto direito: {right_set}")
-
-        matching = hopcroft_karp(subgraph, left_set, right_set)
-        print(f"Emparelhamento encontrado com peso <= {weight_threshold}: {matching}")
-
-        if len(matching) == len(left_set):
-            best_matching = matching  
-            best_weight = weight_threshold
-            print(f"Emparelhamento perfeito encontrado com peso {best_weight}: {best_matching}")
-            right = mid - 1
-        else:
-            print(f"Emparelhamento não é perfeito. Tentando próximo peso.")
-            left = mid + 1
-
-    return best_matching if best_matching and len(best_matching) == len(left_set) else set()
-
-def calcularAlturas(T): #FUNCIONA
-    alturas ={}
-    def dfs(v, altura_atual, visitado):
-        visitado[v] = True
-        alturas[v] = altura_atual
-        for vizinho in T.N(v):
-            if not visitado[vizinho]:
-                dfs(vizinho, altura_atual+1, visitado)
-    visitado = [False] * (T.n + 1)
-    dfs(1,0,visitado)
-    return alturas
-
-def hausdorffDistanceBetweenTrees(grafo1, grafo2):
-    hd = float('inf')
-    O = set()
-    r1=grafo1.center()[0]
-    r2 = None
-    T1_heights = grafo1.heights()
-
-    for u in grafo2.adj_list:
-        Mp=set()
-        T2_heights = grafo2.heights()
-        distance = OptimalTopDownCommonSubtree(grafo1,r1,grafo2,u,Mp)
-    
-    if distance < hd:
-        hd = distance
-        r2 = u
-        O = Mp
-
-    if r2 is None:
-        raise ValueError("R2 doesn't have any value")
-
-    M = set()
-    reconstructionOfMapping(grafo1,r1,r2,O,M)
-    return hd, M
-
-def preorder(graph,v,visit): #funciona
-    pilha = [v]
-    visitados = set()
-    while pilha:
-        atual = pilha.pop()
-        if atual in visitados:
-            continue
-        visitados.add(atual)
-        visit(atual)
-        for w in list(graph.N(atual)):
-            if w not in visitados:
-                pilha.append(w)
-
-def teste_solve_optimal_perfeito_complexo():
-    grafo_teste = listaAdj(orientado=False)
-    grafo_teste.DefinirN(15)
-    
-    # Adicionando arestas com pesos
-    arestas = [
-        (1, 2, 3), (1, 3, 2), (2, 4, 1), (2, 5, 4), (3, 6, 1), (3, 7, 3),
-        (4, 8, 2), (4, 9, 3), (5, 10, 1), (6, 11, 2), (7, 12, 3), 
-        (8, 13, 1), (9, 14, 2), (10, 15, 1), (11, 12, 2), (13, 14, 4), 
-        (14, 15, 3)
-    ]
-    
-    for u, v, weight in arestas:
-        grafo_teste.AdicionarAresta(u, v)
-        grafo_teste.setPeso(u, v, weight)
-    
-    resultado = solveOptimalPerfectMatching(grafo_teste)
-    print(f"Resultado do emparelhamento ótimo: {resultado}")
-
-# Executando o teste
-teste_solve_optimal_perfeito_complexo()
+# Exibir o resultado
+print("Resultado do emparelhamento ótimo:", resultado)
