@@ -32,70 +32,62 @@ def OptimalTopDownCommonSubtree(T1, v, T2, u, Mp, memo=None, iteracoes=0, depth=
                 memo[(v, u)] = (max(altura_v, altura_u), Mp)
                 continue
 
-            estado_parcial = {"distância": 0, "Mp": Mp.copy(), "pares_subárvores": []}
+            estado_parcial = {"distância": 0, "Mp": Mp.copy(), "pares_subárvores": {}}
             pilha.append((v, u, estado_parcial, "resolvido"))
 
-            offset = max(T1.vertices(), default=0) 
-            vizinhos_u_orig = T2.vizinhanca(u)
-
-            vizinhos_u = [j for j in vizinhos_u_orig if j in T2.vertices()]
-
-            print(f"Offset utilizado: {offset}")
-            print(f"Vizinhos de {u} em T2 antes do deslocamento: {vizinhos_u_orig}")
-            print(f"Vizinhos de {u} em T2 após deslocamento: {vizinhos_u}")
-            print(f"Todos os vértices de T2: {T2.vertices()}")
-
-            Gvu = Grafo()
-            total_nodes = T1.num_nos + T2.num_nos
+            L_orig = T1.vizinhanca(v)
+            R_orig = T2.vizinhanca(u)
+            L_map = {node: idx for idx, node in enumerate(L_orig, start=1)}
+            R_map = {node: idx for idx, node in enumerate(R_orig, start=len(L_orig) + 1)}
+            total = len(L_orig) + len(R_orig)
             
-            for i in range(1, total_nodes + 3):
-                Gvu.grafo.add_node(i)
-
-            vizinhos_v = T1.vizinhanca(v)
-            vizinhos_u = [j + offset for j in vizinhos_u if (j + offset) in T2.vertices()]
-
-            for i in vizinhos_v:
-                for j in vizinhos_u:
-                    Gvu.grafo.add_edge(i, j, weight=1)
+            G_aux = nx.Graph()
+            for i in range(1, total + 3):
+                G_aux.add_node(i)
+            
+            for orig_l, new_l in L_map.items():
+                for orig_r, new_r in R_map.items():
+                    G_aux.add_edge(new_l, new_r, weight=1)
                     iteracoes += 1
                     if iteracoes >= MAX_ITERACOES:
                         return memo.get((v, u), ("Limite de iterações atingido", Mp))
-
-            dum_v, dum_u = total_nodes + 1, total_nodes + 2
-            for x in vizinhos_v:
-                Gvu.grafo.add_edge(x, dum_u, weight=1)
-            for y in vizinhos_u:
-                Gvu.grafo.add_edge(dum_v, y, weight=1)
-
+            
+            dum_left, dum_right = total + 1, total + 2
+            for orig_l, new_l in L_map.items():
+                G_aux.add_edge(new_l, dum_right, weight=1)
+            for orig_r, new_r in R_map.items():
+                G_aux.add_edge(dum_left, new_r, weight=1)
+            
+            Gvu = Grafo()
+            Gvu.grafo = G_aux 
+            Gvu.left_size = len(L_map)
+            Gvu.right_size = len(R_map)
+            
+            estado_parcial["L_map"] = L_map
+            estado_parcial["R_map"] = R_map
             estado_parcial["grafo_aux"] = Gvu
             
-            for i in vizinhos_v:
-                for j in vizinhos_u:
-                    if (i, j) not in visited:
-                        pilha.append((i, j, estado_parcial, "início"))
-                        estado_parcial["pares_subárvores"].append((i, j))
-                        visited.add((i, j))
-
+            for orig_l in L_orig:
+                for orig_r in R_orig:
+                    if (orig_l, orig_r) not in visited:
+                        pilha.append((orig_l, orig_r, estado_parcial, "início"))
+                        estado_parcial["pares_subárvores"][(orig_l, orig_r)] = (L_map.get(orig_l), R_map.get(orig_r))
+                        visited.add((orig_l, orig_r))
+        
         elif op == "resolvido":
             Gvu = estado_parcial["grafo_aux"]
-            dum_v, dum_u = total_nodes + 1, total_nodes + 2
+            total = len(estado_parcial["L_map"]) + len(estado_parcial["R_map"])
+            dum_left, dum_right = total + 1, total + 2
 
-            for u_vertex, v_vertex in Gvu.arestas():
-                if u_vertex == dum_v:
-                    Gvu.set_peso(u_vertex, v_vertex, T2.altura().get(v_vertex, 0) + 1)
-                elif v_vertex == dum_u:
-                    Gvu.set_peso(u_vertex, v_vertex, T1.altura().get(u_vertex, 0) + 1)
-                elif (u_vertex, v_vertex) in memo:
-                    Gvu.set_peso(u_vertex, v_vertex, memo[(u_vertex, v_vertex)][0])
-                else:
-                    Gvu.set_peso(u_vertex, v_vertex, 0)
-
-            print(f"Arestas do Gvu: {list(Gvu.arestas())}")
-            print(f"Pesos das arestas: {[Gvu.get_peso(u, v) for u, v in Gvu.arestas()]}")
+            print(f"Arestas do Gvu: {list(Gvu.grafo.edges(data=True))}")
+            print(f"Pesos das arestas: {[data.get('weight', None) for _,_,data in Gvu.grafo.edges(data=True)]}")
+            
             Mvu = solve_optimal_perfect_matching(Gvu)
-            distância = max((Gvu.get_weight(u, v) for u, v in Mvu), default=0)
-            Mvu_filtered = {(i, j) for i, j in Mvu if i <= T1.num_nos and j > T1.num_nos}
-
+            distância = max((Gvu.get_peso(u_edge, v_edge) for u_edge, v_edge in Mvu), default=0)
+            L_set = set(estado_parcial["L_map"].values())
+            R_set = set(estado_parcial["R_map"].values())
+            Mvu_filtered = {(u_edge, v_edge) for u_edge, v_edge in Mvu if u_edge in L_set and v_edge in R_set}
+            
             Mp.update(Mvu_filtered)
             memo[(v, u)] = (distância, Mp)
 
@@ -105,129 +97,70 @@ def solve_optimal_perfect_matching(gvu):
     if not isinstance(gvu, Grafo):
         raise TypeError("O parâmetro 'gvu' deve ser uma instância de Grafo.")
     
-    todos_vertices = sorted(gvu.vertices())
-    if not todos_vertices:
+    G = gvu.grafo  
+    todos = sorted(G.nodes())
+    if not todos:
         return set()
     
-    num_nos_T1 = max(v for v in todos_vertices if v <= len(todos_vertices) // 2)
-    num_nos_T2 = len(todos_vertices) - num_nos_T1
-    print(f"num_nos_T1: {num_nos_T1}, num_nos_T2: {num_nos_T2}")
-    edge_weights = sorted(set(gvu.get_peso(u, v) for u, v in gvu.arestas()))
-    if not edge_weights:
-        return set() 
+    dummy = set(todos[-2:])
+    valid_nodes = [v for v in todos if v not in dummy]
+    
+    k = gvu.left_size  
+    valid_nodes_sorted = sorted(valid_nodes)
+    left_set = set(valid_nodes_sorted[:k])
+    right_set = set(valid_nodes_sorted[k:])
+    print(f"solve_optimal_perfect_matching: left_set: {left_set}")
+    print(f"solve_optimal_perfect_matching: right_set: {right_set}")
+    
+    matching = nx.bipartite.maximum_matching(G, top_nodes=left_set)
+    matching_set = {(u, v) for u, v in matching.items() if u in left_set and v in right_set}
+    print(f"Melhor emparelhamento encontrado: {matching_set}")
+    return matching_set
 
-    def is_perfect_matching(weight_threshold):
-        valid_edges = [(u, v) for u, v in gvu.arestas() if gvu.get_peso(u, v) <= weight_threshold]
-        subgraph = nx.Graph()
-        subgraph.add_edges_from(valid_edges)
+def ProcedureReconstructionOfMapping(T1, T2, r1, r2, M_prime, M):
+    M.add((r1, r2))
+    preorder = T1.preorder_traversal(T1, r1)  
+    
+    for v in preorder:
+        for (v_prime, w) in M_prime:
+            if v_prime == v:
+                parent_v = T1.parent(v)
+                parent_w = T2.parent(w)
+                if parent_v is not None and parent_w is not None:
+                    if (parent_v, parent_w) in M:
+                        M.add((v, w))
+    return M
 
-        left_set = {u for u in gvu.vertices() if u <= num_nos_T1}  
-        right_set = {u for u in gvu.vertices() if u > num_nos_T1 and u <= num_nos_T1 + num_nos_T2}
-
-        print(f"left_set: {left_set}")
-        print(f"right_set: {right_set}")
-
-        subgraph.add_nodes_from(left_set)
-        subgraph.add_nodes_from(right_set)
-
-        for u in left_set:
-            if subgraph.degree(u) == 0:
-                return False, set()
-
-        matching = nx.bipartite.maximum_matching(subgraph, top_nodes=left_set)
-        matching_set = {(u, v) for u, v in matching.items() if u in left_set and v in right_set}
-
-        is_perfect = len(matching_set) == len(left_set) and all(v in right_set for _, v in matching_set)
-        return is_perfect, matching_set
-
-
-    left, right = 0, len(edge_weights) - 1
-    best_matching = set()
-    best_weight = float('inf')
-    while left <= right:
-        mid = (left + right) // 2
-        weight_threshold = edge_weights[mid]
-        is_perfect, matching_set = is_perfect_matching(weight_threshold)
-        if is_perfect:
-            best_matching = matching_set
-            best_weight = weight_threshold
-            right = mid - 1
-        else:
-            left = mid + 1
-    print(f"Melhor emparelhamento encontrado: {best_matching}")
-    if best_matching and len(best_matching) == len({u for u in gvu.vertices() if u <= num_nos_T1}):
-        return best_matching
-    return set()
-
-def hopcroft_karp(graph, left_set, right_set):
-    pair_u = {u: None for u in left_set}
-    pair_v = {v: None for v in right_set} 
-    dist = {} 
-
-    def bfs():
-        queue = deque()
-        for u in left_set:
-            if pair_u[u] is None:
-                dist[u] = 0
-                queue.append(u)
-            else:
-                dist[u] = float('inf')
-        dist[None] = float('inf')
-
-        while queue:
-            u = queue.popleft()
-            if dist[u] < dist[None]:
-                for v in graph.N(u):
-                    if v in pair_v:
-                        if pair_v[v] is None:
-                            dist[None] = dist[u] + 1
-                        elif dist.get(pair_v[v], float('inf')) == float('inf'):
-                            dist[pair_v[v]] = dist[u] + 1
-                            queue.append(pair_v[v])
-        return dist[None] != float('inf')
-
-    def dfs(u):
-        if u is not None:
-            for v in graph.N(u):
-                if v in pair_v and dist.get(pair_v[v], float('inf')) == dist[u] + 1:
-                    if pair_v[v] is None or dfs(pair_v[v]):
-                        pair_v[v] = u
-                        pair_u[u] = v
-                        return True
-            dist[u] = float('inf')
-            return False
-        return True
-
-    matching = set()
-    while bfs():
-        for u in left_set:
-            if pair_u[u] is None and dfs(u):
-                matching.add((u, pair_u[u]))
-
-    return matching
-
-def teste_OptimalTopDownCommonSubtree_v4():
+def test_ProcedureReconstructionOfMapping():
+    # Criando os grafos como instâncias de ListaAdjG
     T1 = Grafo()
     T2 = Grafo()
 
-    arestas = [(1, 2), (2, 3), (2, 4), (4, 5)]
     T1.definir_n(5)
-    T2.definir_n(5)
-    
-    for u, v in arestas:
-        T1.adicionar_aresta(u, v)
-        T2.adicionar_aresta(u, v)
-    
-    print("Iniciando teste...")
-    Mp = set()
-    
-    try:
-        resultado, iteracoes = OptimalTopDownCommonSubtree(T1, 1, T2, 1, Mp)
-        assert resultado[0] > 0, "O emparelhamento deve ser maior que 0"
-        print(f"Emparelhamento bem-sucedido! Distância: {resultado[0]}, Iterações: {iteracoes}")
-    except Exception as e:
-        print(f"Erro: {e}")
-        raise
+
+    # Adicionando arestas a T1
+    T1.adicionar_aresta(1, 2)
+    T1.adicionar_aresta(1, 3)
+    T1.adicionar_aresta(2, 4)
+    T1.adicionar_aresta(4, 5)
+
+    # Adicionando vértices a T2
+    T2.definir_n(4)
+
+    # Adicionando arestas a T2
+    T2.adicionar_aresta(1, 2)
+    T2.adicionar_aresta(1, 3)
+    T2.adicionar_aresta(2, 4)
+
+    # Conjunto M' com correspondências das subárvores comuns
+    M_prime = {(2, 2), (4, 4)}
+
+    # Mapeamento inicial vazio
+    M = set()
+
+    # Chama o procedimento
+    M_reconstructed = ProcedureReconstructionOfMapping(T1, T2, 1, 10, M_prime, M)
+    print("Mapping reconstruído:", M_reconstructed)
 
 if __name__ == "__main__":
-    teste_OptimalTopDownCommonSubtree_v4()
+    test_ProcedureReconstructionOfMapping()

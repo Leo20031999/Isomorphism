@@ -90,3 +90,20 @@ class Grafo:
         for v in vertices:
             if v not in self.grafo.nodes:
                 raise ValueError(f"Vértice {v} não existe no grafo.")
+    
+    def preorder_traversal(T, root):
+        visited = set()
+        order = []
+
+        def dfs(v):
+            if v in visited:
+                return
+            visited.add(v)
+            order.append(v)
+            for neighbor in T.N(v):  # Supondo que T.N(v) retorna os vizinhos de v
+                if neighbor not in visited:
+                    dfs(neighbor)
+
+        dfs(root)
+        return order
+
