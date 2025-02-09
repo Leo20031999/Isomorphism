@@ -1,4 +1,4 @@
-from structures.listaAdj import Grafo
+from structures.Grafo import Grafo
 from collections import deque
 import networkx as nx
 
@@ -117,50 +117,111 @@ def solve_optimal_perfect_matching(gvu):
     print(f"Melhor emparelhamento encontrado: {matching_set}")
     return matching_set
 
+def compute_parent_map(T, root):
+    """
+    Computa um dicionário que mapeia cada vértice ao seu pai na árvore enraizada,
+    utilizando uma DFS e o método T.vizinhanca(v) para obter os vizinhos.
+    """
+    parent = {root: None}
+    stack = [root]
+    visited = {root}
+    while stack:
+        u = stack.pop()
+        for v in T.vizinhanca(u):
+            if v not in visited:
+                visited.add(v)
+                parent[v] = u
+                stack.append(v)
+    return parent
+
 def ProcedureReconstructionOfMapping(T1, T2, r1, r2, M_prime, M):
+    """
+    Reconstrói o mapeamento de isomorfismo a partir do conjunto M_prime.
+    
+    Parâmetros:
+      - T1: Instância de Grafo (ou ListaAdjG) que representa a árvore 1.
+            Deve ter os métodos preorder(root) e vizinhanca(v).
+      - T2: Instância de Grafo que representa a árvore 2.
+      - r1: Vértice raiz de T1.
+      - r2: Vértice raiz de T2.
+      - M_prime: Conjunto de pares (v, w) (soluções dos emparelhamentos perfeitos).
+      - M: Conjunto (mapeamento corrente) que será atualizado.
+    
+    Retorna:
+      - M: O mapeamento reconstruído.
+      
+    O procedimento realiza:
+      1. Adiciona (r1, r2) em M.
+      2. Computa os mapas de pais para T1 e T2.
+      3. Obtém a travessia em pré-ordem de T1 a partir de r1.
+      4. Para cada vértice v na ordem de pré-ordem, se existir um par (v, w) em M_prime e se
+         os pais de v e w já estiverem mapeados em M, adiciona (v, w) em M.
+    """
     M.add((r1, r2))
-    preorder = T1.preorder_traversal(T1, r1)  
+    
+    parent_map_T1 = compute_parent_map(T1, r1)
+    parent_map_T2 = compute_parent_map(T2, r2)
+    print("Parent map T1:", parent_map_T1)
+    print("Parent map T2:", parent_map_T2)
+    
+    preorder = T1.preorder(r1)
+    print("Preorder traversal of T1:", preorder)
     
     for v in preorder:
         for (v_prime, w) in M_prime:
-            if v_prime == v:
-                parent_v = T1.parent(v)
-                parent_w = T2.parent(w)
+            if v == v_prime:
+                parent_v = parent_map_T1.get(v)
+                parent_w = parent_map_T2.get(w)
+                print(f"Verificando par ({v}, {w}), pais: ({parent_v}, {parent_w})")
                 if parent_v is not None and parent_w is not None:
                     if (parent_v, parent_w) in M:
                         M.add((v, w))
+                        print(f"Adicionado par: ({v}, {w})")
     return M
 
+# Método de teste utilizando a classe Grafo (ou ListaAdjG)
 def test_ProcedureReconstructionOfMapping():
-    # Criando os grafos como instâncias de ListaAdjG
+    # Crie os grafos T1 e T2 utilizando sua classe Grafo.
     T1 = Grafo()
     T2 = Grafo()
-
+    
+    # Construa T1: árvore com 5 vértices e a estrutura:
+    #         1
+    #        / \
+    #       2   3
+    #       |
+    #       4
+    #       |
+    #       5
     T1.definir_n(5)
-
-    # Adicionando arestas a T1
     T1.adicionar_aresta(1, 2)
     T1.adicionar_aresta(1, 3)
     T1.adicionar_aresta(2, 4)
     T1.adicionar_aresta(4, 5)
-
-    # Adicionando vértices a T2
+    
+    # Construa T2: árvore com 4 vértices e a estrutura:
+    #         10
+    #        /  \
+    #       20   30
+    #       |
+    #       40
     T2.definir_n(4)
-
-    # Adicionando arestas a T2
-    T2.adicionar_aresta(1, 2)
-    T2.adicionar_aresta(1, 3)
-    T2.adicionar_aresta(2, 4)
-
-    # Conjunto M' com correspondências das subárvores comuns
-    M_prime = {(2, 2), (4, 4)}
-
-    # Mapeamento inicial vazio
+    # Para T2, limpamos os nós criados e adicionamos os desejados manualmente:
+    T2.grafo.clear()
+    for v in [10, 20, 30, 40]:
+        T2.grafo.add_node(v)
+    T2.num_nos = 4
+    T2.adicionar_aresta(10, 20)
+    T2.adicionar_aresta(10, 30)
+    T2.adicionar_aresta(20, 40)
+    
+    # Defina M_prime com os pares que representam a subárvore comum:
+    # Suponha que a subárvore comum seja T1: {2,4,5} e T2: {20,40}
+    M_prime = {(2, 20), (4, 40)}
     M = set()
-
-    # Chama o procedimento
-    M_reconstructed = ProcedureReconstructionOfMapping(T1, T2, 1, 10, M_prime, M)
-    print("Mapping reconstruído:", M_reconstructed)
+    
+    mapping_reconstruido = ProcedureReconstructionOfMapping(T1, T2, 1, 10, M_prime, M)
+    print("Mapping reconstruído:", mapping_reconstruido)
 
 if __name__ == "__main__":
     test_ProcedureReconstructionOfMapping()

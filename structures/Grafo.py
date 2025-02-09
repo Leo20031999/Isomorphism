@@ -91,7 +91,7 @@ class Grafo:
             if v not in self.grafo.nodes:
                 raise ValueError(f"Vértice {v} não existe no grafo.")
     
-    def preorder_traversal(T, root):
+    def preorder(self, root):
         visited = set()
         order = []
 
@@ -100,7 +100,7 @@ class Grafo:
                 return
             visited.add(v)
             order.append(v)
-            for neighbor in T.N(v):  # Supondo que T.N(v) retorna os vizinhos de v
+            for neighbor in self.n(v):
                 if neighbor not in visited:
                     dfs(neighbor)
 
