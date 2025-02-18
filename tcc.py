@@ -120,42 +120,43 @@ def solve_optimal_perfect_matching(gvu):
 def compute_parent_map(T, root):
     """
     Computa um dicionário que mapeia cada vértice ao seu pai na árvore enraizada,
-    utilizando uma DFS e o método T.vizinhanca(v) para obter os vizinhos.
+    utilizando uma busca em largura (BFS).
+    Assume que T.vizinhanca(v) retorna os vizinhos de v.
     """
     parent = {root: None}
-    stack = [root]
+    queue = [root]
     visited = {root}
-    while stack:
-        u = stack.pop()
+    while queue:
+        u = queue.pop(0)
         for v in T.vizinhanca(u):
             if v not in visited:
                 visited.add(v)
                 parent[v] = u
-                stack.append(v)
+                queue.append(v)
     return parent
 
 def ProcedureReconstructionOfMapping(T1, T2, r1, r2, M_prime, M):
     """
     Reconstrói o mapeamento de isomorfismo a partir do conjunto M_prime.
-    
+
     Parâmetros:
-      - T1: Instância de Grafo (ou ListaAdjG) que representa a árvore 1.
-            Deve ter os métodos preorder(root) e vizinhanca(v).
+      - T1: Instância de Grafo que representa a árvore 1. Deve possuir os métodos
+            preorder(root) e vizinhanca(v).
       - T2: Instância de Grafo que representa a árvore 2.
       - r1: Vértice raiz de T1.
       - r2: Vértice raiz de T2.
-      - M_prime: Conjunto de pares (v, w) (soluções dos emparelhamentos perfeitos).
+      - M_prime: Conjunto de pares (v, w) que são soluções dos emparelhamentos perfeitos.
       - M: Conjunto (mapeamento corrente) que será atualizado.
-    
+
     Retorna:
       - M: O mapeamento reconstruído.
       
-    O procedimento realiza:
+    A lógica é a seguinte:
       1. Adiciona (r1, r2) em M.
-      2. Computa os mapas de pais para T1 e T2.
+      2. Calcula os mapas de pais para T1 e T2 usando compute_parent_map.
       3. Obtém a travessia em pré-ordem de T1 a partir de r1.
-      4. Para cada vértice v na ordem de pré-ordem, se existir um par (v, w) em M_prime e se
-         os pais de v e w já estiverem mapeados em M, adiciona (v, w) em M.
+      4. Para cada vértice v em T1, se existe um par (v, w) em M_prime e se os pais de v e w
+         já estão mapeados em M, adiciona (v, w) em M.
     """
     M.add((r1, r2))
     
@@ -179,13 +180,48 @@ def ProcedureReconstructionOfMapping(T1, T2, r1, r2, M_prime, M):
                         print(f"Adicionado par: ({v}, {w})")
     return M
 
-# Método de teste utilizando a classe Grafo (ou ListaAdjG)
+def HausdorffDistanceBetweenTrees(T1, T2):
+    """
+    Algorithm1: HausdorffDistanceBetweenTrees
+    Input: Árvores arbitrárias T1 e T2, onde diam(T1) >= diam(T2).
+    Output: A distância de Hausdorff entre T1 e T2 (hd) e a estrutura de subárvore comum (M).
+    
+    Requisitos:
+      - T1.center() retorna um vértice central de T1.
+      - T1.compute_heights(root) e T2.compute_heights(root) computam as alturas dos vértices da árvore,
+        a partir da raiz dada.
+      - T1.vertices() e T2.vertices() retornam as listas de vértices.
+      - OptimalTopDownCommonSubtree(T1, r1, T2, u, M_prime) retorna uma tupla (distance, iteracoes).
+      - ReconstructionOfMapping(T1, r1, r2, O, M) reconstrói o mapeamento final em M.
+    """
+    hd = float('inf')
+    O = set()
+    r1 = T1.center()
+    
+    T1.altura(r1)
+    
+    r2 = None
+    for u in T2.vertices():
+        M_prime = set()
+        T2.altura(u)
+        (result, _) = OptimalTopDownCommonSubtree(T1, r1, T2, u, M_prime)
+        distance = result[0]
+        if distance < hd:
+            hd = distance
+            r2 = u
+            O = M_prime.copy()
+    
+    M = set()
+    ProcedureReconstructionOfMapping(T1, T2, r1, r2, O, M)
+    
+    return hd, M
+
 def test_ProcedureReconstructionOfMapping():
-    # Crie os grafos T1 e T2 utilizando sua classe Grafo.
+    # Cria os grafos T1 e T2 usando a classe Grafo
     T1 = Grafo()
     T2 = Grafo()
     
-    # Construa T1: árvore com 5 vértices e a estrutura:
+    # Construa T1 com 5 vértices e a estrutura:
     #         1
     #        / \
     #       2   3
@@ -199,15 +235,14 @@ def test_ProcedureReconstructionOfMapping():
     T1.adicionar_aresta(2, 4)
     T1.adicionar_aresta(4, 5)
     
-    # Construa T2: árvore com 4 vértices e a estrutura:
+    # Construa T2 com 4 vértices e a estrutura:
     #         10
     #        /  \
     #       20   30
     #       |
     #       40
     T2.definir_n(4)
-    # Para T2, limpamos os nós criados e adicionamos os desejados manualmente:
-    T2.grafo.clear()
+    T2.grafo.clear()  # Limpa os nós criados por definir_n
     for v in [10, 20, 30, 40]:
         T2.grafo.add_node(v)
     T2.num_nos = 4
@@ -215,11 +250,12 @@ def test_ProcedureReconstructionOfMapping():
     T2.adicionar_aresta(10, 30)
     T2.adicionar_aresta(20, 40)
     
-    # Defina M_prime com os pares que representam a subárvore comum:
-    # Suponha que a subárvore comum seja T1: {2,4,5} e T2: {20,40}
+    # Defina M_prime: suponha que a subárvore comum seja T1: {2,4,5} e T2: {20,40}.
+    # Assim, M_prime conterá os pares (2,20) e (4,40).
     M_prime = {(2, 20), (4, 40)}
     M = set()
     
+    # Para obter o mapeamento desejado, usamos as raízes desejadas: r1 = 1 e r2 = 10.
     mapping_reconstruido = ProcedureReconstructionOfMapping(T1, T2, 1, 10, M_prime, M)
     print("Mapping reconstruído:", mapping_reconstruido)
 
