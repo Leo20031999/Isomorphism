@@ -32,6 +32,7 @@ def OptimalTopDownCommonSubtree(T1, v, T2, u, Mp, memo=None, iteracoes=0, depth=
                 memo[(v, u)] = (max(altura_v, altura_u), Mp)
                 continue
 
+            # Cria o estado parcial
             estado_parcial = {"distância": 0, "Mp": Mp.copy(), "pares_subárvores": {}}
             pilha.append((v, u, estado_parcial, "resolvido"))
 
@@ -40,54 +41,88 @@ def OptimalTopDownCommonSubtree(T1, v, T2, u, Mp, memo=None, iteracoes=0, depth=
             L_map = {node: idx for idx, node in enumerate(L_orig, start=1)}
             R_map = {node: idx for idx, node in enumerate(R_orig, start=len(L_orig) + 1)}
             total = len(L_orig) + len(R_orig)
-            
+
             G_aux = nx.Graph()
+            # Cria nós reais e dummies
             for i in range(1, total + 3):
                 G_aux.add_node(i)
-            
+
+            # Adiciona arestas entre nós reais (placeholder, peso a ser atualizado)
             for orig_l, new_l in L_map.items():
                 for orig_r, new_r in R_map.items():
-                    G_aux.add_edge(new_l, new_r, weight=1)
+                    G_aux.add_edge(new_l, new_r, weight=0)
                     iteracoes += 1
                     if iteracoes >= MAX_ITERACOES:
                         return memo.get((v, u), ("Limite de iterações atingido", Mp))
-            
+
+            # Define vértices dummy e cria as arestas correspondentes
             dum_left, dum_right = total + 1, total + 2
             for orig_l, new_l in L_map.items():
-                G_aux.add_edge(new_l, dum_right, weight=1)
+                G_aux.add_edge(new_l, dum_right, weight=0)  # peso = height(T1, orig_l) + 1
             for orig_r, new_r in R_map.items():
-                G_aux.add_edge(dum_left, new_r, weight=1)
-            
+                G_aux.add_edge(dum_left, new_r, weight=0)  # peso = height(T2, orig_r) + 1
+
             Gvu = Grafo()
             Gvu.grafo = G_aux 
             Gvu.left_size = len(L_map)
             Gvu.right_size = len(R_map)
-            
+
             estado_parcial["L_map"] = L_map
             estado_parcial["R_map"] = R_map
             estado_parcial["grafo_aux"] = Gvu
-            
+
+            # Para cada par (x, y) entre vizinhos reais, agenda o subproblema correspondente
             for orig_l in L_orig:
                 for orig_r in R_orig:
                     if (orig_l, orig_r) not in visited:
                         pilha.append((orig_l, orig_r, estado_parcial, "início"))
                         estado_parcial["pares_subárvores"][(orig_l, orig_r)] = (L_map.get(orig_l), R_map.get(orig_r))
                         visited.add((orig_l, orig_r))
-        
+
         elif op == "resolvido":
             Gvu = estado_parcial["grafo_aux"]
             total = len(estado_parcial["L_map"]) + len(estado_parcial["R_map"])
             dum_left, dum_right = total + 1, total + 2
 
-            print(f"Arestas do Gvu: {list(Gvu.grafo.edges(data=True))}")
-            print(f"Pesos das arestas: {[data.get('weight', None) for _,_,data in Gvu.grafo.edges(data=True)]}")
-            
+            L_map = estado_parcial["L_map"]
+            R_map = estado_parcial["R_map"]
+            # Cria mapas inversos para recuperar os vértices originais
+            L_inv = {v_new: v_orig for v_orig, v_new in L_map.items()}
+            R_inv = {v_new: v_orig for v_orig, v_new in R_map.items()}
+
+            # Atualiza os pesos das arestas conforme o pseudocódigo:
+            for x, y, data in Gvu.grafo.edges(data=True):
+                if x == dum_left:
+                    # x é dummy: peso = height(T2, y_original) + 1
+                    orig_y = R_inv.get(y)
+                    weight = T2.altura().get(orig_y, 0) + 1
+                    data["weight"] = weight
+                elif y == dum_right:
+                    # y é dummy: peso = height(T1, x_original) + 1
+                    orig_x = L_inv.get(x)
+                    weight = T1.altura().get(orig_x, 0) + 1
+                    data["weight"] = weight
+                elif x in L_inv and y in R_inv:
+                    # Ambos são reais: peso obtido pela subárvore
+                    sub_key = (L_inv[x], R_inv[y])
+                    if sub_key in memo:
+                        weight = memo[sub_key][0]
+                    else:
+                        weight = 1  # valor padrão se ainda não foi computado
+                    data["weight"] = weight
+                # Outras combinações (se existirem) podem ser tratadas conforme necessário
+
+            print(f"Arestas atualizadas do Gvu: {list(Gvu.grafo.edges(data=True))}")
+
+            # Resolve o emparelhamento perfeito
             Mvu = solve_optimal_perfect_matching(Gvu)
+            # A distância é o maior peso entre as arestas do emparelhamento
             distância = max((Gvu.get_peso(u_edge, v_edge) for u_edge, v_edge in Mvu), default=0)
-            L_set = set(estado_parcial["L_map"].values())
-            R_set = set(estado_parcial["R_map"].values())
+            # Filtra arestas que não envolvam dummies
+            L_set = set(L_map.values())
+            R_set = set(R_map.values())
             Mvu_filtered = {(u_edge, v_edge) for u_edge, v_edge in Mvu if u_edge in L_set and v_edge in R_set}
-            
+
             Mp.update(Mvu_filtered)
             memo[(v, u)] = (distância, Mp)
 
@@ -216,48 +251,18 @@ def HausdorffDistanceBetweenTrees(T1, T2):
     
     return hd, M
 
-def test_ProcedureReconstructionOfMapping():
-    # Cria os grafos T1 e T2 usando a classe Grafo
-    T1 = Grafo()
-    T2 = Grafo()
-    
-    # Construa T1 com 5 vértices e a estrutura:
-    #         1
-    #        / \
-    #       2   3
-    #       |
-    #       4
-    #       |
-    #       5
-    T1.definir_n(5)
-    T1.adicionar_aresta(1, 2)
-    T1.adicionar_aresta(1, 3)
-    T1.adicionar_aresta(2, 4)
-    T1.adicionar_aresta(4, 5)
-    
-    # Construa T2 com 4 vértices e a estrutura:
-    #         10
-    #        /  \
-    #       20   30
-    #       |
-    #       40
-    T2.definir_n(4)
-    T2.grafo.clear()  # Limpa os nós criados por definir_n
-    for v in [10, 20, 30, 40]:
-        T2.grafo.add_node(v)
-    T2.num_nos = 4
-    T2.adicionar_aresta(10, 20)
-    T2.adicionar_aresta(10, 30)
-    T2.adicionar_aresta(20, 40)
-    
-    # Defina M_prime: suponha que a subárvore comum seja T1: {2,4,5} e T2: {20,40}.
-    # Assim, M_prime conterá os pares (2,20) e (4,40).
-    M_prime = {(2, 20), (4, 40)}
-    M = set()
-    
-    # Para obter o mapeamento desejado, usamos as raízes desejadas: r1 = 1 e r2 = 10.
-    mapping_reconstruido = ProcedureReconstructionOfMapping(T1, T2, 1, 10, M_prime, M)
-    print("Mapping reconstruído:", mapping_reconstruido)
+T1 = Grafo()
+T1.definir_n(5)
+T1.adicionar_aresta(1, 2)
+T1.adicionar_aresta(1, 3)
+T1.adicionar_aresta(3, 4)
+T1.adicionar_aresta(3, 5)
+T2 = Grafo()
+T2.definir_n(3)
+T2.adicionar_aresta(1, 2)
+T2.adicionar_aresta(1, 3)
 
-if __name__ == "__main__":
-    test_ProcedureReconstructionOfMapping()
+hd, M = HausdorffDistanceBetweenTrees(T1,T2)
+        
+print(f"Hausdorff Distance: {hd}")
+print(f"Mapping: {M}")
