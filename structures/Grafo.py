@@ -106,14 +106,4 @@ class Grafo:
 
         dfs(root)
         return order
-    
-    def center(self):
-        """
-        Retorna o vértice central da árvore.
-        Se houver dois centros, retorna o primeiro.
-        """
-        center_nodes = nx.center(self.grafo)
-        if center_nodes:
-            return center_nodes[0]
-        return None
 
