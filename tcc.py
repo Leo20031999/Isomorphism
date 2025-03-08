@@ -1,265 +1,308 @@
-from structures.Grafo import Grafo
 from collections import deque
 import networkx as nx
+from networkx.algorithms import bipartite
+from structures.Grafo import Grafo
 
-MAX_ITERACOES = 1000
-MAX_DEPTH = 50
-
-def OptimalTopDownCommonSubtree(T1, v, T2, u, Mp, memo=None, iteracoes=0, depth=0):
+def OptimalTopDownCommonSubtree(T1, v, T2, u, M_prime, parent_map_T1, parent_map_T2, memo=None):
     if memo is None:
         memo = {}
-
-    pilha = [(v, u, None, "início")]
-    visited = set()
-
-    while pilha:
-        v, u, estado_parcial, op = pilha.pop()
-
-        if (v, u) in memo:
-            if estado_parcial:
-                estado_parcial["distância"] = memo[(v, u)][0]
-                estado_parcial["Mp"] = memo[(v, u)][1]
-            continue
-
-        if op == "início":
-            print(f"Verificando se {u} (de T2) é folha...")
-            if u not in T2.vertices():
-                raise ValueError(f"Erro: Tentativa de acessar vértice inexistente {u} em T2.")
-
-            if T1.is_leaf(v) or T2.is_leaf(u):
-                altura_v = T1.altura().get(v, 0)
-                altura_u = T2.altura().get(u, 0)
-                memo[(v, u)] = (max(altura_v, altura_u), Mp)
-                continue
-
-            # Cria o estado parcial
-            estado_parcial = {"distância": 0, "Mp": Mp.copy(), "pares_subárvores": {}}
-            pilha.append((v, u, estado_parcial, "resolvido"))
-
-            L_orig = T1.vizinhanca(v)
-            R_orig = T2.vizinhanca(u)
-            L_map = {node: idx for idx, node in enumerate(L_orig, start=1)}
-            R_map = {node: idx for idx, node in enumerate(R_orig, start=len(L_orig) + 1)}
-            total = len(L_orig) + len(R_orig)
-
-            G_aux = nx.Graph()
-            # Cria nós reais e dummies
-            for i in range(1, total + 3):
-                G_aux.add_node(i)
-
-            # Adiciona arestas entre nós reais (placeholder, peso a ser atualizado)
-            for orig_l, new_l in L_map.items():
-                for orig_r, new_r in R_map.items():
-                    G_aux.add_edge(new_l, new_r, weight=0)
-                    iteracoes += 1
-                    if iteracoes >= MAX_ITERACOES:
-                        return memo.get((v, u), ("Limite de iterações atingido", Mp))
-
-            # Define vértices dummy e cria as arestas correspondentes
-            dum_left, dum_right = total + 1, total + 2
-            for orig_l, new_l in L_map.items():
-                G_aux.add_edge(new_l, dum_right, weight=0)  # peso = height(T1, orig_l) + 1
-            for orig_r, new_r in R_map.items():
-                G_aux.add_edge(dum_left, new_r, weight=0)  # peso = height(T2, orig_r) + 1
-
-            Gvu = Grafo()
-            Gvu.grafo = G_aux 
-            Gvu.left_size = len(L_map)
-            Gvu.right_size = len(R_map)
-
-            estado_parcial["L_map"] = L_map
-            estado_parcial["R_map"] = R_map
-            estado_parcial["grafo_aux"] = Gvu
-
-            # Para cada par (x, y) entre vizinhos reais, agenda o subproblema correspondente
-            for orig_l in L_orig:
-                for orig_r in R_orig:
-                    if (orig_l, orig_r) not in visited:
-                        pilha.append((orig_l, orig_r, estado_parcial, "início"))
-                        estado_parcial["pares_subárvores"][(orig_l, orig_r)] = (L_map.get(orig_l), R_map.get(orig_r))
-                        visited.add((orig_l, orig_r))
-
-        elif op == "resolvido":
-            Gvu = estado_parcial["grafo_aux"]
-            total = len(estado_parcial["L_map"]) + len(estado_parcial["R_map"])
-            dum_left, dum_right = total + 1, total + 2
-
-            L_map = estado_parcial["L_map"]
-            R_map = estado_parcial["R_map"]
-            # Cria mapas inversos para recuperar os vértices originais
-            L_inv = {v_new: v_orig for v_orig, v_new in L_map.items()}
-            R_inv = {v_new: v_orig for v_orig, v_new in R_map.items()}
-
-            # Atualiza os pesos das arestas conforme o pseudocódigo:
-            for x, y, data in Gvu.grafo.edges(data=True):
-                if x == dum_left:
-                    # x é dummy: peso = height(T2, y_original) + 1
-                    orig_y = R_inv.get(y)
-                    weight = T2.altura().get(orig_y, 0) + 1
-                    data["weight"] = weight
-                elif y == dum_right:
-                    # y é dummy: peso = height(T1, x_original) + 1
-                    orig_x = L_inv.get(x)
-                    weight = T1.altura().get(orig_x, 0) + 1
-                    data["weight"] = weight
-                elif x in L_inv and y in R_inv:
-                    # Ambos são reais: peso obtido pela subárvore
-                    sub_key = (L_inv[x], R_inv[y])
-                    if sub_key in memo:
-                        weight = memo[sub_key][0]
-                    else:
-                        weight = 1  # valor padrão se ainda não foi computado
-                    data["weight"] = weight
-                # Outras combinações (se existirem) podem ser tratadas conforme necessário
-
-            print(f"Arestas atualizadas do Gvu: {list(Gvu.grafo.edges(data=True))}")
-
-            # Resolve o emparelhamento perfeito
-            Mvu = solve_optimal_perfect_matching(Gvu)
-            # A distância é o maior peso entre as arestas do emparelhamento
-            distância = max((Gvu.get_peso(u_edge, v_edge) for u_edge, v_edge in Mvu), default=0)
-            # Filtra arestas que não envolvam dummies
-            L_set = set(L_map.values())
-            R_set = set(R_map.values())
-            Mvu_filtered = {(u_edge, v_edge) for u_edge, v_edge in Mvu if u_edge in L_set and v_edge in R_set}
-
-            Mp.update(Mvu_filtered)
-            memo[(v, u)] = (distância, Mp)
-
-    return memo[(v, u)], iteracoes
-
-def solve_optimal_perfect_matching(gvu):
-    if not isinstance(gvu, Grafo):
-        raise TypeError("O parâmetro 'gvu' deve ser uma instância de Grafo.")
+    if (v, u) in memo:
+        return memo[(v, u)]
     
-    G = gvu.grafo  
-    todos = sorted(G.nodes())
-    if not todos:
+    if T1.is_leaf(v, parent_map_T1) or T2.is_leaf(u, parent_map_T2):
+        dist = max(T1.altura(v, parent_map_T1), T2.altura(u, parent_map_T2))
+        memo[(v, u)] = dist
+        M_prime.add((v, u))
+        return dist
+    
+    # Ordenar filhos por altura
+    L = sorted(T1.vizinhanca(v, parent_map_T1), key=lambda x: (-T1.altura(x, parent_map_T1), x))
+    R = sorted(T2.vizinhanca(u, parent_map_T2), key=lambda x: (-T2.altura(x, parent_map_T2), x))
+    
+    # Prefixar IDs para evitar conflitos
+    L_prefixed = [f"T1_{l}" for l in L]
+    R_prefixed = [f"T2_{r}" for r in R]
+    
+    # Inicializar partições (FIX ADICIONADO)
+    left_partition = L_prefixed.copy()
+    right_partition = R_prefixed.copy()
+    
+    dummy_left = []
+    dummy_right = []
+    dummy_prefix = f"dummy_{v}_{u}_"
+
+    # Adicionar dummies conforme pseudocódigo
+    if len(L) > len(R):
+        num_dummies = len(L) - len(R)
+        dummy_right = [f"{dummy_prefix}R_{i}" for i in range(num_dummies)]
+        right_partition += dummy_right  # Dummies na partição direita (T2)
+    elif len(R) > len(L):
+        num_dummies = len(R) - len(L)
+        dummy_left = [f"{dummy_prefix}L_{i}" for i in range(num_dummies)]
+        left_partition += dummy_left  # Dummies na partição esquerda (T1)
+    
+    # Construir grafo bipartido (AGORA left_partition e right_partition estão definidos)
+    B = nx.Graph()
+    B.add_nodes_from(left_partition, bipartite=0)
+    B.add_nodes_from(right_partition, bipartite=1)
+    
+    # Dentro de OptimalTopDownCommonSubtree:
+    for i, l in enumerate(L):
+        for j, r in enumerate(R):
+            l_pref = L_prefixed[i]
+            r_pref = R_prefixed[j]
+            weight = OptimalTopDownCommonSubtree(T1, l, T2, r, M_prime, parent_map_T1, parent_map_T2, memo)
+            B.add_edge(l_pref, r_pref, weight=weight)  # Sem ajuste posicional!
+    
+    # Dentro de OptimalTopDownCommonSubtree:
+    current_height_T1 = T1.altura(v, parent_map_T1)
+    current_height_T2 = T2.altura(u, parent_map_T2)
+
+    # Penalizar arestas com dummies (T1 -> dummy_right)
+    for l_pref in L_prefixed:
+        for dr in dummy_right:
+            B.add_edge(l_pref, dr, weight=current_height_T1 + 1)  # height[v] + 1
+
+    # Penalizar arestas com dummies (dummy_left <- T2)
+    for r_pref in R_prefixed:
+        for dl in dummy_left:
+            B.add_edge(dl, r_pref, weight=current_height_T2 + 1)  # height[u] + 1
+
+    # Arestas entre dummies têm peso 0 (mantido)
+    for dl in dummy_left:
+        for dr in dummy_right:
+            B.add_edge(dl, dr, weight=0)
+    
+    Mvu = SolveOptimalPerfectMatching(B, left_partition)
+    
+    real_pairs = [
+        (int(x.split("_")[1]), int(y.split("_")[1]))
+        for x, y in Mvu
+        if x.startswith("T1_") and y.startswith("T2_")
+    ]
+    
+    # Atualiza M_prime apenas para nós não folha
+    M_prime.update(real_pairs)
+    
+    max_dist = max(B[x][y]['weight'] for x, y in Mvu) if Mvu else 0
+    current_height_diff = abs(T1.altura(v, parent_map_T1) - T2.altura(u, parent_map_T2))
+    final_dist = max(max_dist, current_height_diff)
+    
+    M_prime.update(real_pairs)
+    memo[(v, u)] = final_dist
+    return final_dist
+
+def SolveOptimalPerfectMatching(G, left_nodes):
+    edges = sorted(G.edges(data='weight'), key=lambda x: x[2])
+    
+    if not edges:
         return set()
     
-    dummy = set(todos[-2:])
-    valid_nodes = [v for v in todos if v not in dummy]
+    unique_weights = sorted({w for _, _, w in edges})
+    best_matching = None
+    low, high = 0, len(unique_weights) - 1
     
-    k = gvu.left_size  
-    valid_nodes_sorted = sorted(valid_nodes)
-    left_set = set(valid_nodes_sorted[:k])
-    right_set = set(valid_nodes_sorted[k:])
-    print(f"solve_optimal_perfect_matching: left_set: {left_set}")
-    print(f"solve_optimal_perfect_matching: right_set: {right_set}")
+    while low <= high:
+        mid = (low + high) // 2
+        threshold = unique_weights[mid]
+        subG = nx.Graph()
+        
+        for u, v, w in edges:
+            if w <= threshold:
+                subG.add_edge(u, v)
+        
+        left_sub = [n for n in left_nodes if n in subG]
+        right_sub = [n for n in G.nodes if n not in left_nodes and n in subG]
+        
+        if not left_sub or not right_sub:
+            # Não há nós para fazer matching
+            low = mid + 1
+            continue
+        
+        try:
+            # Usar Hopcroft-Karp para encontrar o matching máximo
+            matching = bipartite.hopcroft_karp_matching(subG, left_sub)
+            # Verificar se o matching cobre todos os nós da esquerda
+            matched_left = {u for u in matching if u in left_sub}
+            if len(matched_left) == len(left_sub):
+                best_matching = matching
+                high = mid - 1
+            else:
+                low = mid + 1
+        except nx.NetworkXError:
+            low = mid + 1
     
-    matching = nx.bipartite.maximum_matching(G, top_nodes=left_set)
-    matching_set = {(u, v) for u, v in matching.items() if u in left_set and v in right_set}
-    print(f"Melhor emparelhamento encontrado: {matching_set}")
-    return matching_set
+    if best_matching is None:
+        return set()
+    
+    # Filtrar apenas pares reais e retornar como conjunto de tuplas
+    return {(u, v) for u, v in best_matching.items() 
+            if u in left_sub and u.startswith("T1_") and v.startswith("T2_")}
+
+def ProcedureReconstructionOfMapping(T1, T2, r1, r2, M_prime, parent_map_T1, parent_map_T2):
+    mapping = {r1: r2}
+    used_T2 = {r2}  # Rastreia nós de T2 já mapeados
+    queue = deque([r1])
+    
+    while queue:
+        current = queue.popleft()
+        # Dentro do loop while queue:
+        for child in T1.vizinhanca(current, parent_map_T1):
+            if child in mapping:
+                continue
+            # Filtrar candidatos onde o pai em T2 é o mapeamento do current
+            parent_in_T2 = mapping[current]
+            candidates = [
+                (vp, wp) for (vp, wp) in M_prime 
+                if vp == child and parent_map_T2.get(wp, None) == parent_in_T2
+                and wp not in used_T2
+            ]
+            if candidates:
+                # Escolher o candidato com menor diferença de ID
+                candidate = min(candidates, key=lambda x: abs(x[0] - x[1]))
+                mapping[child] = candidate[1]
+                used_T2.add(candidate[1])
+                queue.append(child)
+    return {(v, u) for v, u in mapping.items()}
 
 def compute_parent_map(T, root):
-    """
-    Computa um dicionário que mapeia cada vértice ao seu pai na árvore enraizada,
-    utilizando uma DFS e o método T.vizinhanca(v) para obter os vizinhos.
-    """
-    parent = {root: None}
-    stack = [root]
-    visited = {root}
-    while stack:
-        u = stack.pop()
+    if root not in T.vertices():
+        raise ValueError(f"Root {root} não existe na árvore.")
+    parent_map = {root: None}
+    queue = deque([root])
+    
+    while queue:
+        u = queue.popleft()
         for v in T.vizinhanca(u):
-            if v not in visited:
-                visited.add(v)
-                parent[v] = u
-                stack.append(v)
-    return parent
+            if v != parent_map.get(u) and v not in parent_map:
+                parent_map[v] = u
+                queue.append(v)
+    
+    return parent_map
 
-def ProcedureReconstructionOfMapping(T1, T2, r1, r2, M_prime, M):
-    """
-    Reconstrói o mapeamento de isomorfismo a partir do conjunto M_prime.
-    
-    Parâmetros:
-      - T1: Instância de Grafo (ou ListaAdjG) que representa a árvore 1.
-            Deve ter os métodos preorder(root) e vizinhanca(v).
-      - T2: Instância de Grafo que representa a árvore 2.
-      - r1: Vértice raiz de T1.
-      - r2: Vértice raiz de T2.
-      - M_prime: Conjunto de pares (v, w) (soluções dos emparelhamentos perfeitos).
-      - M: Conjunto (mapeamento corrente) que será atualizado.
-    
-    Retorna:
-      - M: O mapeamento reconstruído.
-      
-    O procedimento realiza:
-      1. Adiciona (r1, r2) em M.
-      2. Computa os mapas de pais para T1 e T2.
-      3. Obtém a travessia em pré-ordem de T1 a partir de r1.
-      4. Para cada vértice v na ordem de pré-ordem, se existir um par (v, w) em M_prime e se
-         os pais de v e w já estiverem mapeados em M, adiciona (v, w) em M.
-    """
-    M.add((r1, r2))
-    
-    parent_map_T1 = compute_parent_map(T1, r1)
-    parent_map_T2 = compute_parent_map(T2, r2)
-    print("Parent map T1:", parent_map_T1)
-    print("Parent map T2:", parent_map_T2)
-    
-    preorder = T1.preorder(r1)
-    print("Preorder traversal of T1:", preorder)
-    
-    for v in preorder:
-        for (v_prime, w) in M_prime:
-            if v == v_prime:
-                parent_v = parent_map_T1.get(v)
-                parent_w = parent_map_T2.get(w)
-                print(f"Verificando par ({v}, {w}), pais: ({parent_v}, {parent_w})")
-                if parent_v is not None and parent_w is not None:
-                    if (parent_v, parent_w) in M:
-                        M.add((v, w))
-                        print(f"Adicionado par: ({v}, {w})")
-    return M
-
-def HausdorffDistanceBetweenTrees(T1, T2):
-    """
-    Algorithm1: HausdorffDistanceBetweenTrees
-    Input: Árvores arbitrárias T1 e T2, onde diam(T1) >= diam(T2).
-    Output: A distância de Hausdorff entre T1 e T2 (hd) e a estrutura de subárvore comum (M).
-    
-    Requisitos:
-    - T1.center() retorna um vértice central de T1.
-    - T1.compute_heights(root) e T2.compute_heights(root) computam as alturas dos vértices da árvore,
-        a partir da raiz dada.
-    - T1.vertices() e T2.vertices() retornam as listas de vértices.
-    - OptimalTopDownCommonSubtree(T1, r1, T2, u, M_prime) retorna uma tupla (distance, iteracoes).
-    - ReconstructionOfMapping(T1, r1, r2, O, M) reconstrói o mapeamento final em M.
-    """
+def HausdorffDistanceBetweenTrees(T1, T2):  # SEM use_centers!
     hd = float('inf')
-    O = set()
-    r1 = T1.center()
-        
-    T1.altura(r1)
-        
-    r2 = None
+    best_mapping = set()
+    
+    # Escolhe o centro de T1 como raiz fixa
+    t1_roots = sorted(T1.center())
+    valid_t1_roots = [c for c in t1_roots if c in T1.vertices()]
+    
+    if not valid_t1_roots:
+        return hd, best_mapping
+    
+    r1 = valid_t1_roots[0]  # Primeiro centro de T1
+    
+    # Itera sobre todos os nós de T2 (não apenas centros)
     for u in T2.vertices():
+        parent_map_T1 = compute_parent_map(T1, r1)
+        parent_map_T2 = compute_parent_map(T2, u)
         M_prime = set()
-        T2.altura(u)
-        (result, _) = OptimalTopDownCommonSubtree(T1, r1, T2, u, M_prime)
-        distance = result[0]
+        distance = OptimalTopDownCommonSubtree(T1, r1, T2, u, M_prime, parent_map_T1, parent_map_T2)
+        
         if distance < hd:
             hd = distance
-            r2 = u
-            O = M_prime.copy()
-        
-    M = set()
-    ProcedureReconstructionOfMapping(T1, T2, r1, r2, O, M)
-        
-    return hd, M
+            best_r2 = u
+            best_M_prime = M_prime.copy()
+    
+    if hd != float('inf'):
+        parent_map_T1 = compute_parent_map(T1, r1)
+        parent_map_T2 = compute_parent_map(T2, best_r2)
+        best_mapping = ProcedureReconstructionOfMapping(T1, T2, r1, best_r2, best_M_prime, parent_map_T1, parent_map_T2)
+    
+    return hd, best_mapping
 
-if __name__ == "__main__":
+def test_HausdorffDistance_arvores_identicas():
     T1 = Grafo()
-    T1.definir_n(3)
-    T1.adicionar_aresta(1,2)
-    T1.adicionar_aresta(2,3)
+    T1.adicionar_aresta(1, 2)
+    T1.adicionar_aresta(1, 3)
 
     T2 = Grafo()
-    T2.definir_n(3)
-    T2.adicionar_aresta(1,2)
-    T2.adicionar_aresta(2,3)
+    T2.adicionar_aresta(1, 2)
+    T2.adicionar_aresta(1, 3)
 
-    print(HausdorffDistanceBetweenTrees(T1, T2) )
-    
+    hd, mapping = HausdorffDistanceBetweenTrees(T1, T2)
+    print("\nTeste 1 - Árvores Idênticas:")
+    print(f"Distância: {hd}")  # Esperado: 0
+    print(f"Mapeamento: {mapping}")
+    assert hd == 0 and len(mapping) == 3
+
+def test_HausdorffDistance_altura_diferente():
+    T1 = Grafo()
+    T1.adicionar_aresta(1, 2)
+    T1.adicionar_aresta(1, 3)
+
+    T2 = Grafo()
+    T2.adicionar_aresta(1, 2)
+    T2.adicionar_aresta(1, 3)
+    T2.adicionar_aresta(2, 4)
+
+    hd, mapping = HausdorffDistanceBetweenTrees(T1, T2)
+
+    print("\nTeste 2 - Alturas Diferentes:")
+    print(f"Distância: {hd}")  # Esperado: 1
+    print(f"Mapeamento: {mapping}")
+
+    assert hd == 1, f"Erro: Distância esperada 1, obtida {hd}"
+    assert len(mapping) == 3, "Mapeamento incompleto"
+
+def test_HausdorffDistance_assimetricas():
+    T1 = Grafo()
+    T1.adicionar_aresta(1, 2)
+    T1.adicionar_aresta(1, 3)
+    T1.adicionar_aresta(2, 4)
+
+    T2 = Grafo()
+    T2.adicionar_aresta(5, 6)
+    T2.adicionar_aresta(5, 7)
+    T2.adicionar_aresta(6, 8)
+    T2.adicionar_aresta(8, 9)
+
+    hd, mapping = HausdorffDistanceBetweenTrees(T1, T2)
+
+    print("\nTeste 3 - Árvores Assimétricas Modificado:")
+    print(f"Distância: {hd}")  # Esperado: 1 (após correções)
+    print(f"Mapeamento: {mapping}")
+    assert hd == 1 and len(mapping) == 3, "Erro: Distância ou mapeamento incorreto"
+
+def test_HausdorffDistance_folhas_nao_correspondentes():
+    T1 = Grafo()
+    T1.adicionar_aresta(1, 2)
+    T1.adicionar_aresta(1, 3)
+
+    T2 = Grafo()
+    T2.adicionar_aresta(1, 4)
+    T2.adicionar_aresta(1, 5)
+
+    hd, mapping = HausdorffDistanceBetweenTrees(T1, T2)
+
+    print("\nTeste 4 - Folhas Não Correspondentes:")
+    print(f"Distância: {hd}")  # Esperado: 0
+    print(f"Mapeamento: {mapping}")
+
+    assert hd == 0, f"Erro: Distância esperada 0, obtida {hd}"
+    assert len(mapping) == 3, "Mapeamento incompleto"
+
+def test_HausdorffDistance_um_no():
+    # Árvore 1: [1]   Árvore 2: [2]
+    T1 = Grafo()
+    T1.adicionar_aresta(1, 1)  # Adiciona nó 1 (self-loop)
+    T1.remover_aresta(1, 1)    # Remove a aresta, deixando o nó 1 isolado
+
+    T2 = Grafo()
+    T2.adicionar_aresta(2, 2)  # Adiciona nó 2 (self-loop)
+    T2.remover_aresta(2, 2)    # Remove a aresta, deixando o nó 2 isolado
+
+    hd, mapping = HausdorffDistanceBetweenTrees(T1, T2)
+    print("\nTeste 5 - Um Nó:")
+    print(f"Distância: {hd}")  # Esperado: 0
+    print(f"Mapeamento: {mapping}")  # Ex: {(1, 2)}
+    assert hd == 0, f"Erro: Distância esperada 0, obtida {hd}"
+    assert len(mapping) == 1, "Mapeamento incompleto"
+
+if __name__ == "__main__":
+    test_HausdorffDistance_arvores_identicas()
+    test_HausdorffDistance_altura_diferente()
+    test_HausdorffDistance_assimetricas()
+    test_HausdorffDistance_folhas_nao_correspondentes()
+    test_HausdorffDistance_um_no()
