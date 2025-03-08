@@ -55,16 +55,16 @@ class Grafo:
         return len(self.vizinhanca(v, parent_map)) == 0
 
     def altura(self, node, parent_map):
-        """Calcula a altura da subárvore enraizada em `node`."""
+        """Calcula a altura como número de arestas no caminho mais longo."""
         if self.is_leaf(node, parent_map):
             return 0
         max_depth = 0
-        queue = deque([(node, 0)])
-        while queue:
-            current, depth = queue.popleft()
+        stack = [(node, 0)]  # (nó, profundidade em arestas)
+        while stack:
+            current, depth = stack.pop()
             max_depth = max(max_depth, depth)
             for child in self.vizinhanca(current, parent_map):
-                queue.append((child, depth + 1))
+                stack.append((child, depth + 1))
         return max_depth
 
     def sao_adj(self, u, v):
