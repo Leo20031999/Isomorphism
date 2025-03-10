@@ -11,11 +11,10 @@ def OptimalTopDownCommonSubtree(T1, v, T2, u, M_prime, parent_map_T1, parent_map
     
     if T1.is_leaf(v, parent_map_T1) and T2.is_leaf(u, parent_map_T2):
         dist = 0 
-    elif T1.is_leaf(v, parent_map_T1) or T2.is_leaf(u, parent_map_T2):
+    if T1.is_leaf(v, parent_map_T1) or T2.is_leaf(u, parent_map_T2):
         dist = max(T1.altura(v, parent_map_T1), T2.altura(u, parent_map_T2))
         memo[(v, u)] = dist
-        M_prime.add((v, u))
-        return dist
+        return dist 
     
     L = sorted(T1.vizinhanca(v, parent_map_T1), key=lambda x: (-T1.altura(x, parent_map_T1), x))
     R = sorted(T2.vizinhanca(u, parent_map_T2), key=lambda x: (-T2.altura(x, parent_map_T2), x))
@@ -55,11 +54,11 @@ def OptimalTopDownCommonSubtree(T1, v, T2, u, M_prime, parent_map_T1, parent_map
     
     for l_pref in L_prefixed:
         for dr in dummy_right:
-            B.add_edge(l_pref, dr, weight=current_height_T1)
+            B.add_edge(l_pref, dr, weight=current_height_T1 + 1)
     
     for r_pref in R_prefixed:
         for dl in dummy_left:
-            B.add_edge(dl, r_pref, weight=current_height_T2)
+            B.add_edge(dl, r_pref, weight=current_height_T2 + 1)
     
     for dl in dummy_left:
         for dr in dummy_right:
@@ -127,26 +126,21 @@ def SolveOptimalPerfectMatching(G, left_nodes):
 
 def ProcedureReconstructionOfMapping(T1, T2, r1, r2, M_prime, parent_map_T1, parent_map_T2):
     mapping = {r1: r2}
-    used_T2 = {r2} 
-    queue = deque([r1])
-    
-    while queue:
-        current = queue.popleft()
-        for child in T1.vizinhanca(current, parent_map_T1):
-            if child in mapping:
-                continue
-            parent_in_T2 = mapping[current]
-            candidates = [
-                (vp, wp) for (vp, wp) in M_prime 
-                if vp == child and parent_map_T2.get(wp, None) == parent_in_T2
-                and wp not in used_T2
-            ]
-            if candidates:
-                candidate = min(candidates, key=lambda x: abs(x[0] - x[1]))
-                mapping[child] = candidate[1]
-                used_T2.add(candidate[1])
-                queue.append(child)
-    return {(v, u) for v, u in mapping.items()}
+    used_T2 = {r2}
+    pre_order = T1.preorder(r1, parent_map_T1)
+    for v in pre_order:
+        if v == r1:
+            continue
+        parent_v = parent_map_T1[v]
+        parent_u = mapping[parent_v]
+        candidates = [
+            (vp, wp) for (vp, wp) in M_prime 
+            if vp == v and parent_map_T2.get(wp, None) == parent_u and wp not in used_T2
+        ]
+        if candidates:
+            mapping[v] = candidates[0][1]
+            used_T2.add(candidates[0][1])
+    return {(k, v) for k, v in mapping.items()}
 
 def compute_parent_map(T, root):
     if root not in T.vertices():
@@ -167,23 +161,17 @@ def HausdorffDistanceBetweenTrees(T1, T2):
     hd = float('inf')
     best_mapping = set()
     
-    t1_centers = sorted(T1.center())
-    r1 = t1_centers[0] if t1_centers else next(iter(T1.vertices()), None)
-    if r1 is None:
-        return hd, best_mapping
+    r1 = T1.center()[0]
     
-    t2_centers = sorted(T2.center())
-    valid_t2_roots = [c for c in t2_centers if c in T2.vertices()]
-    
-    for r2 in valid_t2_roots:
+    for u in T2.vertices():
         parent_map_T1 = compute_parent_map(T1, r1)
-        parent_map_T2 = compute_parent_map(T2, r2)
+        parent_map_T2 = compute_parent_map(T2, u)
         M_prime = set()
-        distance = OptimalTopDownCommonSubtree(T1, r1, T2, r2, M_prime, parent_map_T1, parent_map_T2)
+        distance = OptimalTopDownCommonSubtree(T1, r1, T2, u, M_prime, parent_map_T1, parent_map_T2)
         
         if distance < hd:
             hd = distance
-            best_r2 = r2
+            best_r2 = u
             best_M_prime = M_prime.copy()
     
     if hd != float('inf'):
@@ -203,8 +191,8 @@ def test_HausdorffDistance_arvores_identicas():
 
     hd, mapping = HausdorffDistanceBetweenTrees(T1, T2)
     print("\nTeste 1 - Árvores Idênticas:")
-    print(f"Distância: {hd}")  # Esperado: 0
-    print(f"Mapeamento: {mapping}")
+    print(f"Distância: {hd}")  # Saída Esperada: 0
+    print(f"Mapeamento: {mapping}")  # Ex: {(1,1), (2,2), (3,3)}
     assert hd == 0 and len(mapping) == 3
 
 def test_HausdorffDistance_altura_diferente():

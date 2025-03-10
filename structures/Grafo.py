@@ -36,7 +36,6 @@ class Grafo:
             raise KeyError(f"Aresta {u}-{v} não existe.")
 
     def vizinhanca(self, u, parent_map=None):
-        """Retorna os filhos de u, excluindo o pai (se houver)."""
         if parent_map is None:
             return list(self.grafo.neighbors(u))
         parent = parent_map.get(u)
@@ -47,19 +46,15 @@ class Grafo:
         return self.grafo.degree(u)
 
     def is_leaf(self, v, parent_map=None):
-        """Verifica se v é folha, considerando o parent_map para árvores enraizadas."""
         if parent_map is None:
-            # Folha em árvore não enraizada: grau <= 1
             return self.grafo.degree(v) <= 1
-        # Em árvore enraizada, folha não tem filhos além do pai
         return len(self.vizinhanca(v, parent_map)) == 0
 
     def altura(self, node, parent_map):
-        """Calcula a altura como número de arestas no caminho mais longo."""
         if self.is_leaf(node, parent_map):
             return 0
         max_depth = 0
-        stack = [(node, 0)]  # (nó, profundidade em arestas)
+        stack = [(node, 0)]
         while stack:
             current, depth = stack.pop()
             max_depth = max(max_depth, depth)
@@ -78,25 +73,22 @@ class Grafo:
             return vizinhos
         return [w for w in vizinhos if self.grafo[v][w].get("tipo", None) == tipo]
     
-    def preorder(self, root):
-        visited = set()
-        order = []
-
-        def dfs(v):
-            if v in visited:
+    def preorder(self, root, parent_map):
+        visited = []
+        
+        def dfs(node):
+            if node is None:
                 return
-            visited.add(v)
-            order.append(v)
-            for neighbor in self.n(v):
-                if neighbor not in visited:
-                    dfs(neighbor)
-
+            visited.append(node)
+            children = sorted(
+                [child for child in self.vizinhanca(node, parent_map) if parent_map.get(child, None) == node],
+                key=lambda x: (-self.altura(x, parent_map), x)
+            )
+            for child in children:
+                dfs(child)
+        
         dfs(root)
-        return order
+        return visited
 
     def center(self):
-        """
-        Retorna o vértice central da árvore.
-        Se houver dois centros, os centros.
-        """
         return nx.center(self.grafo)
