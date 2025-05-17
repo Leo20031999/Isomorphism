@@ -41,6 +41,12 @@ class Grafo:
         parent = parent_map.get(u)
         return [v for v in self.grafo.neighbors(u) if v != parent]
 
+    def _verificar_vertice(self, *vertices):
+        """Verifica se um ou mais vértices existem no grafo (método interno)"""
+        for v in vertices:
+            if not self.grafo.has_node(v):
+                raise ValueError(f"Vértice {v} não existe no grafo")
+            
     def grau(self, u):
         self._verificar_vertice(u)
         return self.grafo.degree(u)
@@ -92,3 +98,20 @@ class Grafo:
 
     def center(self):
         return nx.center(self.grafo)
+    
+    def levelize(self, root):
+        parent_map = {}
+        layers = []
+        queue = deque([root])
+        parent_map[root] = None
+        current_layer = [root]
+        while current_layer:
+            layers.append(current_layer)
+            next_layer = []
+            for u in current_layer:
+                for v in self.grafo.neighbors(u):
+                    if v not in parent_map:
+                        parent_map[v] = u
+                        next_layer.append(v)
+            current_layer = next_layer
+        return layers, parent_map
