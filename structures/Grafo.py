@@ -1,117 +1,172 @@
-from collections import deque
-import networkx as nx
-
 class Grafo:
     def __init__(self):
-        self.grafo = nx.Graph()
+        import networkx as nx
+        self._nx = nx
+        self.grafo = self._nx.Graph()
+        self._rotulos_vertices = {}
+        self._rotulos_arestas = {}
+        self._atributos_vertices = {}
+        self._atributos_arestas = {}
+
+    def adicionar_vertice(self, v, rotulo=None, atributos=None):
+        self.grafo.add_node(v)
+        if rotulo is not None:
+            self._rotulos_vertices[v] = rotulo
+        if atributos is not None:
+            self._atributos_vertices[v] = atributos
+        else:
+            self._atributos_vertices[v] = {}
+
+    def adicionar_aresta(self, u, v, rotulo=None, atributos=None):
+        self.grafo.add_edge(u, v)
+        if rotulo is not None:
+            self._rotulos_arestas[(u, v)] = rotulo
+            self._rotulos_arestas[(v, u)] = rotulo
+        if atributos is not None:
+            self._atributos_arestas[(u, v)] = atributos
+            self._atributos_arestas[(v, u)] = atributos
+        else:
+            self._atributos_arestas[(u, v)] = {}
+            self._atributos_arestas[(v, u)] = {}
+
+    def adicionar_multiplos_vertices(self, list_v):
+        for v in list_v:
+            self.adicionar_vertice(v)
+
+    def adicionar_multiplas_arestas(self, list_e):
+        for u, v in list_e:
+            self.adicionar_aresta(u, v)
 
     def vertices(self):
-        return list(self.grafo.nodes)
+        return list(self.grafo.nodes())
 
     def arestas(self):
-        return [(min(u, v), max(u, v)) for u, v in self.grafo.edges]
+        return list(self.grafo.edges())
 
-    def adicionar_aresta(self, u, v, peso=None):
-        if not self.grafo.has_node(u):
-            self.grafo.add_node(u)
-        if not self.grafo.has_node(v):
-            self.grafo.add_node(v)
-        if not self.grafo.has_edge(u, v):
-            self.grafo.add_edge(u, v, weight=peso)
+    def get_atributos_vertice(self, v):
+        return self._atributos_vertices.get(v, {})
 
-    def remover_aresta(self, u, v):
-        if not self.grafo.has_edge(u, v):
-            raise KeyError(f"Aresta {u}-{v} não existe.")
-        self.grafo.remove_edge(u, v)
+    def get_atributos_aresta(self, u, v):
+        return self._atributos_arestas.get((u, v), {})
 
-    def get_peso(self, u, v):
-        if self.grafo.has_edge(u, v):
-            return self.grafo[u][v].get('weight', None)
-        raise KeyError(f"Aresta {u}-{v} não existe.")
+    def grau(self, v):
+        return self.grafo.degree(v)
 
-    def set_peso(self, u, v, peso):
-        if self.grafo.has_edge(u, v):
-            self.grafo[u][v]['weight'] = peso
-        else:
-            raise KeyError(f"Aresta {u}-{v} não existe.")
+    def get_rotulo_vertice(self, v):
+        return self._rotulos_vertices.get(v, None)
 
-    def vizinhanca(self, u, parent_map=None):
-        if parent_map is None:
-            return list(self.grafo.neighbors(u))
-        parent = parent_map.get(u)
-        return [v for v in self.grafo.neighbors(u) if v != parent]
+    def get_rotulo_aresta(self, u, v):
+        return self._rotulos_arestas.get((u, v), None)
 
-    def _verificar_vertice(self, *vertices):
-        """Verifica se um ou mais vértices existem no grafo (método interno)"""
-        for v in vertices:
-            if not self.grafo.has_node(v):
-                raise ValueError(f"Vértice {v} não existe no grafo")
-            
-    def grau(self, u):
-        self._verificar_vertice(u)
-        return self.grafo.degree(u)
+    def set_rotulo_vertice(self, v, rotulo):
+        self._rotulos_vertices[v] = rotulo
 
-    def is_leaf(self, v, parent_map=None):
-        if parent_map is None:
-            return self.grafo.degree(v) <= 1
-        return len(self.vizinhanca(v, parent_map)) == 0
-
-    def altura(self, node, parent_map):
-        if self.is_leaf(node, parent_map):
-            return 0
-        max_depth = 0
-        stack = [(node, 0)]
-        while stack:
-            current, depth = stack.pop()
-            max_depth = max(max_depth, depth)
-            for child in self.vizinhanca(current, parent_map):
-                stack.append((child, depth + 1))
-        return max_depth
-
-    def sao_adj(self, u, v):
-        self._verificar_vertice(u, v)
-        return self.grafo.has_edge(u, v)
-
-    def n(self, v, tipo="*"):
-        self._verificar_vertice(v)
-        vizinhos = self.vizinhanca(v)
-        if tipo == "*":
-            return vizinhos
-        return [w for w in vizinhos if self.grafo[v][w].get("tipo", None) == tipo]
-    
-    def preorder(self, root, parent_map):
-        visited = []
-        
-        def dfs(node):
-            if node is None:
-                return
-            visited.append(node)
-            children = sorted(
-                [child for child in self.vizinhanca(node, parent_map) if parent_map.get(child, None) == node],
-                key=lambda x: (-self.altura(x, parent_map), x)
-            )
-            for child in children:
-                dfs(child)
-        
-        dfs(root)
-        return visited
+    def set_rotulo_aresta(self, u, v, rotulo):
+        self._rotulos_arestas[(u, v)] = rotulo
+        self._rotulos_arestas[(v, u)] = rotulo
 
     def center(self):
-        return nx.center(self.grafo)
-    
-    def levelize(self, root):
-        parent_map = {}
-        layers = []
-        queue = deque([root])
-        parent_map[root] = None
-        current_layer = [root]
-        while current_layer:
-            layers.append(current_layer)
-            next_layer = []
-            for u in current_layer:
-                for v in self.grafo.neighbors(u):
-                    if v not in parent_map:
-                        parent_map[v] = u
-                        next_layer.append(v)
-            current_layer = next_layer
-        return layers, parent_map
+        return self._nx.center(self.grafo)
+
+    def bfs(self, root):
+        visited = []
+        queue = [root]
+        while queue:
+            v = queue.pop(0)
+            if v not in visited:
+                visited.append(v)
+                queue.extend([n for n in self.grafo.neighbors(v) if n not in visited])
+        return visited
+
+    def dfs(self, root):
+        visited = []
+        stack = [root]
+        while stack:
+            v = stack.pop()
+            if v not in visited:
+                visited.append(v)
+                stack.extend([n for n in self.grafo.neighbors(v) if n not in visited])
+        return visited
+
+    def encontrar_bridges(self):
+        return list(self._nx.bridges(self.grafo))
+
+    def encontrar_blocos(self):
+        try:
+            return list(self._nx.biconnected_components(self._nx.Graph(self.grafo)))
+        except Exception:
+            return []
+
+    def encontrar_pontes(self):
+        try:
+            return list(self._nx.bridges(self._nx.Graph(self.grafo)))
+        except Exception:
+            return []
+
+    def eh_outerplanar(self):
+        try:
+            return self._nx.is_outerplanar(self.grafo)
+        except Exception:
+            return False
+
+    def vizinhanca(self, v):
+        return list(self.grafo.neighbors(v))
+
+    def copy(self):
+        """Cria uma cópia profunda do grafo"""
+        novo_grafo = Grafo()
+        for v in self.vertices():
+            novo_grafo.adicionar_vertice(v, self.get_rotulo_vertice(v))
+        for u, v in self.arestas():
+            novo_grafo.adicionar_aresta(u, v, self.get_rotulo_aresta(u, v))
+        return novo_grafo
+
+    def existe_vertice(self, v):
+        """Verifica se um vértice existe no grafo"""
+        return v in self.grafo
+
+    def is_leaf(self, v, parent_map):
+        """Verifica se v é uma folha na árvore enraizada, dado o parent_map."""
+        return len(self.obter_filhos(v, parent_map)) == 0
+
+    def obter_filhos(self, v, parent_map):
+        """Obtém os filhos de um vértice na árvore enraizada, dado o parent_map."""
+        filhos = []
+        for w in self.vizinhanca(v):
+            if parent_map.get(w) == v:
+                filhos.append(w)
+        return filhos
+
+    def altura(self, v, parent_map):
+        """Calcula a altura da subárvore enraizada em v (versão iterativa)."""
+        alturas = {}
+        stack = [v]
+        visitados = set()
+
+        while stack:
+            node = stack[-1]
+            if node in visitados:
+                stack.pop()
+                filhos = self.obter_filhos(node, parent_map)
+                alturas_filhos = [alturas[f] for f in filhos if f in alturas]
+                alturas[node] = 1 + max(alturas_filhos) if alturas_filhos else 0
+            else:
+                visitados.add(node)
+                filhos = self.obter_filhos(node, parent_map)
+                for filho in filhos:
+                    if filho not in visitados:
+                        stack.append(filho)
+
+        return alturas.get(v, 0)
+
+    def preorder(self, root, parent_map):
+        """Retorna a lista de vértices em pré-ordem na árvore enraizada."""
+        ordem = []
+        stack = [root]
+        while stack:
+            node = stack.pop()
+            ordem.append(node)
+            filhos = self.obter_filhos(node, parent_map)
+            for filho in reversed(filhos):
+                stack.append(filho)
+        return ordem
