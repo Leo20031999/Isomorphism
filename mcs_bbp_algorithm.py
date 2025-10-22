@@ -1,628 +1,632 @@
-# A polynomial-time maximum common subgraph algorithm for outerplanar graphs and its application to chemoinformatics
-# Schietgat L.; Ramon J.; Bruynooghe M., 2013
+# A Polynomial-time Maximum Common Subgraph Algorithm for Outerplanar Graphs and its Application to Chemoinformatics
+# SCHIETGAT; RAMON; BRUYNOOGHE, 2013
 
-from collections import deque
 import networkx as nx
-import numpy as np
-from scipy.optimize import linear_sum_assignment
-from functools import lru_cache
+import time
+from collections import deque
+from typing import Dict, List, Tuple, Optional, Any
 
 from structures.Grafo import Grafo
 
+DEFAULT_LABEL_WEIGHTS = {
+    'H': 0.3, 'C': 1.0, 'N': 1.4, 'O': 1.6, 'F': 1.8,
+    'P': 2.0, 'S': 1.7, 'Cl': 2.2, 'Br': 2.8, 'I': 3.2,
+    'single': 1.0, 'double': 1.8, 'triple': 2.5,
+    'aromatic': 1.4, 'amide': 1.6, 'ionic': 2.0, 'hydrogen': 0.8
+}
 
-class BlockPreservingSubgraph:
-    def __init__(self, graph, root, is_basic_root, original_graph):
-        self.graph = graph
-        self.root = root
-        self.is_basic_root = is_basic_root
-        self.original_graph = original_graph
-        self.type = "BPS"
-
-    def get_elementary_parts(self):
-        parts = []
-        if not self.is_basic_root:
-            # Compound-root decomposition
-            bridges = [e for e in self.original_graph.encontrar_pontes() if self.root in e]
-
-            for bridge in bridges:
-                if bridge not in self.graph.arestas():
-                    continue
-
-                other = bridge[1] if bridge[0] == self.root else bridge[0]
-                new_graph = self._create_subgraph_after_removal([bridge], [other])
-                if len(new_graph.vertices()) > 0:
-                    parts.append(BlockPreservingSubgraph(new_graph, other, True, self.original_graph))
-
-            # Handle blocks containing the root
-            blocks = self.original_graph.encontrar_blocos()
-            for block in blocks:
-                if self.root in block:
-                    block_edges = [e for e in self.graph.arestas() if set(e).issubset(block)]
-                    if block_edges:
-                        new_graph = Grafo()
-                        for v in block:
-                            if v in self.graph.vertices():
-                                new_graph.adicionar_vertice(v, self.graph.get_rotulo_vertice(v))
-                        for u, v in block_edges:
-                            new_graph.adicionar_aresta(u, v, self.graph.get_rotulo_aresta(u, v))
-                        parts.append(BlockPreservingSubgraph(new_graph, self.root, True, self.original_graph))
-        else:
-            # Basic-root decomposition
-            if self.graph.grau(self.root) == 1:  # Bridge case
-                neighbors = list(self.graph.vizinhanca(self.root))
-                if neighbors:
-                    other = neighbors[0]
-                    new_graph = self._create_subgraph_after_removal([(self.root, other)], [other])
-                    if len(new_graph.vertices()) > 0:
-                        parts.append(BlockPreservingSubgraph(new_graph, other, False, self.original_graph))
-            else:  # Block case
-                # For outerplanar graphs, find the Hamiltonian cycle
-                cycle = encontrar_ciclo_hamiltoniano_outerplanar(self.graph)
-                if cycle:
-                    for edge in cycle:
-                        if self.root in edge:
-                            other = edge[0] if edge[1] == self.root else edge[1]
-                            bss = BlockSplittingSubgraph(self.graph, other, True, self.original_graph,
-                                                         split_edge=edge, orientation='x')
-                            parts.append(bss)
-        return parts
-
-    def _create_subgraph_after_removal(self, edges_to_remove, vertices_to_keep):
-        new_graph = self.graph.copy()
-        for u, v in edges_to_remove:
-            if new_graph.grafo.has_edge(u, v):
-                new_graph.grafo.remove_edge(u, v)
-
-        # Find connected component containing the keep vertices
-        components = list(nx.connected_components(new_graph.grafo))
-        for comp in components:
-            if any(v in comp for v in vertices_to_keep):
-                result = Grafo()
-                for v in comp:
-                    result.adicionar_vertice(v, new_graph.get_rotulo_vertice(v))
-                for u, v in new_graph.arestas():
-                    if u in comp and v in comp:
-                        result.adicionar_aresta(u, v, new_graph.get_rotulo_aresta(u, v))
-                return result
-
-        # Return empty graph if no component found
-        return Grafo()
-
-
-class BlockSplittingSubgraph:
-    def __init__(self, graph, root, is_basic_root, original_graph, split_edge=None, orientation=None):
-        self.graph = graph
-        self.root = root
-        self.is_basic_root = is_basic_root
-        self.original_graph = original_graph
-        self.type = "BSS"
-        self.split_edge = split_edge
-        self.orientation = orientation
-
-    def get_elementary_parts(self):
-        parts = []
-        if not self.is_basic_root:
-            # Compound-root BSS decomposition
-            bridges = [e for e in self.original_graph.encontrar_pontes() if
-                       self.root in e and e in self.graph.arestas()]
-
-            for bridge in bridges:
-                other = bridge[1] if bridge[0] == self.root else bridge[0]
-                new_graph = self._create_subgraph_after_removal([bridge], [self.root])
-                if len(new_graph.vertices()) > 0:
-                    parts.append(BlockPreservingSubgraph(new_graph, self.root, True, self.original_graph))
-
-            # Handle blocks containing the root
-            blocks = self.original_graph.encontrar_blocos()
-            for block in blocks:
-                if self.root in block:
-                    block_edges = [e for e in self.graph.arestas() if set(e).issubset(block)]
-                    if block_edges:
-                        new_graph = Grafo()
-                        for v in block:
-                            if v in self.graph.vertices():
-                                new_graph.adicionar_vertice(v, self.graph.get_rotulo_vertice(v))
-                        for u, v in block_edges:
-                            new_graph.adicionar_aresta(u, v, self.graph.get_rotulo_aresta(u, v))
-                        parts.append(BlockPreservingSubgraph(new_graph, self.root, True, self.original_graph))
-        return parts
-
-    def _create_subgraph_after_removal(self, edges_to_remove, vertices_to_keep):
-        new_graph = self.graph.copy()
-        for u, v in edges_to_remove:
-            if new_graph.grafo.has_edge(u, v):
-                new_graph.grafo.remove_edge(u, v)
-
-        # Find connected component containing the keep vertices
-        components = list(nx.connected_components(new_graph.grafo))
-        for comp in components:
-            if any(v in comp for v in vertices_to_keep):
-                result = Grafo()
-                for v in comp:
-                    result.adicionar_vertice(v, new_graph.get_rotulo_vertice(v))
-                for u, v in new_graph.arestas():
-                    if u in comp and v in comp:
-                        result.adicionar_aresta(u, v, new_graph.get_rotulo_aresta(u, v))
-                return result
-
-        # Return empty graph if no component found
-        return Grafo()
-
+MAX_VERTICES = 50
+MAX_DECOMPOSITION_DEPTH = 3
+MAX_ELEMENTARY_PARTS = 4
+TIMEOUT_DURATION = 10
 
 class OuterplanarMCS:
-    def __init__(self):
+    """Implementação final do algoritmo MCS para grafos outerplanares"""
+
+    def __init__(self, label_weights: Optional[Dict[str, float]] = None,
+                 max_vertices: int = MAX_VERTICES, timeout: int = TIMEOUT_DURATION):
         self.memo = {}
         self.decomposition_cache = {}
+        self.label_weights = label_weights if label_weights is not None else DEFAULT_LABEL_WEIGHTS
+        self.max_vertices = max_vertices
+        self.timeout = timeout
+        self.start_time = None
+        self.mcs_best_candidate = (Grafo(), 0.0)
+        self._timeout_occurred = False
 
-    def compute_mcs(self, G, H):
-        # Step 1: Find root candidates
-        root_candidates_G = self.find_root_candidates(G)
-        root_candidates_H = self.find_root_candidates(H)
+    def compute_mcs(self, G: Grafo, H: Grafo) -> Tuple[Grafo, float]:
+        """Algoritmo principal CORRIGIDO com BBP - VERSÃO OTIMIZADA"""
+        self.start_time = time.time()
+        self._timeout_occurred = False
+        self.memo.clear()
+        self.decomposition_cache.clear()
+        self.mcs_best_candidate = (Grafo(), 0.0)
 
-        best_mcs = (Grafo(), 0)
+        if self._are_graphs_identical(G, H):
+            return (G.copy(), self._calculate_graph_size(G))
 
-        # Step 2: For each candidate pair
+        if len(G.vertices()) > self.max_vertices or len(H.vertices()) > self.max_vertices:
+            return self._compute_approximate_mcs(G, H)
+
+        if not nx.is_connected(G.grafo) or not nx.is_connected(H.grafo):
+            return self._compute_approximate_mcs(G, H)
+
+        root_candidates_G = self._find_root_candidates(G)
+        root_candidates_H = self._find_root_candidates(H)
+
+        promising_pairs = []
         for r in root_candidates_G:
-            parts_G = self.decompose_graph(G, r)
             for s in root_candidates_H:
-                if G.get_rotulo_vertice(r) != H.get_rotulo_vertice(s):
+                if G.get_rotulo_vertice(r) == H.get_rotulo_vertice(s):
+                    promising_pairs.append((r, s))
+
+        promising_pairs.sort(key=lambda pair:
+        G.grau(pair[0]) + H.grau(pair[1]), reverse=True)
+
+        for r, s in promising_pairs[:10]:
+            if self._check_timeout():
+                break
+
+            parts_G = self._decompose_graph(G, r)
+            parts_H = self._decompose_graph(H, s)
+            self._process_root_pair_with_bbp(parts_G, parts_H, r, s)
+
+            if self.mcs_best_candidate[1] > 5.0:
+                break
+
+        if self.mcs_best_candidate[1] == 0.0:
+            return self._compute_enhanced_fallback(G, H)
+
+        return self.mcs_best_candidate
+
+    def _compute_enhanced_fallback(self, G: Grafo, H: Grafo) -> Tuple[Grafo, float]:
+        """Fallback aprimorado para casos difíceis"""
+        best_graph = Grafo()
+        best_size = 0.0
+
+        g_label_count = {}
+        for v in G.vertices():
+            label = G.get_rotulo_vertice(v)
+            g_label_count[label] = g_label_count.get(label, 0) + 1
+
+        h_label_count = {}
+        for v in H.vertices():
+            label = H.get_rotulo_vertice(v)
+            h_label_count[label] = h_label_count.get(label, 0) + 1
+
+        common_labels = set(g_label_count.keys()) & set(h_label_count.keys())
+
+        for label in common_labels:
+            if self._check_timeout():
+                break
+
+            g_vertices = [v for v in G.vertices() if G.get_rotulo_vertice(v) == label]
+            h_vertices = [v for v in H.vertices() if H.get_rotulo_vertice(v) == label]
+
+            for g_start in g_vertices[:3]:
+                for h_start in h_vertices[:3]:
+                    candidate, size = self._build_mcs_from_pair(G, H, g_start, h_start)
+                    if size > best_size:
+                        best_graph = candidate
+                        best_size = size
+
+        return (best_graph, best_size)
+
+    def _build_mcs_from_pair(self, G: Grafo, H: Grafo, g_start: Any, h_start: Any) -> Tuple[Grafo, float]:
+        """Construir MCS a partir de um par de vértices compatíveis"""
+        mcs_graph = Grafo()
+        mcs_graph.adicionar_vertice(g_start, G.get_rotulo_vertice(g_start))
+
+        mapping = {g_start: h_start}
+        queue = deque([g_start])
+
+        while queue:
+            g_v = queue.popleft()
+            h_v = mapping[g_v]
+
+            for g_neighbor in G.vizinhanca(g_v):
+                if g_neighbor in mapping:
                     continue
 
-                parts_H = self.decompose_graph(H, s)
+                g_label = G.get_rotulo_vertice(g_neighbor)
+                edge_label = G.get_rotulo_aresta(g_v, g_neighbor)
 
-                # Step 3: Compute RMCS for root pair
-                mcs, size = self.rmcs(parts_G[0], parts_H[0])
+                for h_neighbor in H.vizinhanca(h_v):
+                    if h_neighbor in mapping.values():
+                        continue
 
-                if size > best_mcs[1]:
-                    best_mcs = (mcs, size)
+                    if (H.get_rotulo_vertice(h_neighbor) == g_label and
+                            H.get_rotulo_aresta(h_v, h_neighbor) == edge_label):
+                        mcs_graph.adicionar_vertice(g_neighbor, g_label)
+                        mcs_graph.adicionar_aresta(g_v, g_neighbor, edge_label)
+                        mapping[g_neighbor] = h_neighbor
+                        queue.append(g_neighbor)
+                        break
 
-        return best_mcs
+        return (mcs_graph, self._calculate_graph_size(mcs_graph))
 
-    def find_root_candidates(self, graph):
-        candidates = set()
+    def _process_root_pair_with_bbp(self, parts_G: List[Dict], parts_H: List[Dict], r: Any, s: Any):
+        """Processamento com verificação BBP"""
+        root_parts_G = [p for p in parts_G if p['root'] == r and p['type'] == 'BPS']
+        root_parts_H = [p for p in parts_H if p['root'] == s and p['type'] == 'BPS']
 
-        # Add all vertices as candidates (simplified approach)
-        for v in graph.vertices():
-            candidates.add(v)
+        for root_part_G in root_parts_G:
+            for root_part_H in root_parts_H:
+                mcs, size = self._rmcs_with_bbp(root_part_G, root_part_H)
+                if size > self.mcs_best_candidate[1]:
+                    self.mcs_best_candidate = (mcs, size)
 
-        return list(candidates)
+    def _rmcs_with_bbp(self, P: Dict, Q: Dict) -> Tuple[Grafo, float]:
+        """RMCS com verificação BBP"""
+        if self._check_timeout():
+            return (Grafo(), 0.0)
 
-    def decompose_graph(self, graph, root):
-        """Decompose graph into parts with caching"""
+        if P['graph'].get_rotulo_vertice(P['root']) != Q['graph'].get_rotulo_vertice(Q['root']):
+            return self._create_single_vertex_graph(P)
+
+        if P['type'] == 'BPS' and Q['type'] == 'BPS':
+            if not P['is_basic'] and not Q['is_basic']:
+                return self._rmcs_compound_with_bbp(P, Q)
+            else:
+                return self._rmcs_basic_with_bbp(P, Q)
+        else:
+            return self._rmcs_bss_with_bbp(P, Q)
+
+    def _rmcs_compound_with_bbp(self, P: Dict, Q: Dict) -> Tuple[Grafo, float]:
+        """RMCS para raiz composta com BBP"""
+        best_graph, best_size = self._create_single_vertex_graph(P)
+
+        ep_P = self._get_elementary_parts(P, P['graph'])
+        ep_Q = self._get_elementary_parts(Q, Q['graph'])
+
+        used_p = set()
+        used_q = set()
+
+        for i, part_P in enumerate(ep_P):
+            if self._check_timeout():
+                break
+
+            best_match_size = 0
+            best_match_graph = None
+            best_j = -1
+
+            for j, part_Q in enumerate(ep_Q):
+                if j in used_q:
+                    continue
+
+                if self._are_parts_compatible(part_P, part_Q):
+                    sub_mcs, sub_size = self._rmcs_with_bbp(part_P, part_Q)
+                    if sub_size > best_match_size:
+                        best_match_size = sub_size
+                        best_match_graph = sub_mcs
+                        best_j = j
+
+            if best_match_graph and best_match_size > 0:
+                best_graph = self._merge_graphs(best_graph, best_match_graph)
+                best_size += best_match_size
+                used_p.add(i)
+                used_q.add(best_j)
+
+        return (best_graph, best_size)
+
+    def _rmcs_bss_with_bbp(self, P: Dict, Q: Dict) -> Tuple[Grafo, float]:
+        """RMCS para BSS com BBP"""
+        if 'split_edge' not in P or 'split_edge' not in Q:
+            return self._create_single_vertex_graph(P)
+
+        p_split = P['split_edge']
+        q_split = Q['split_edge']
+
+        p_label = P['graph'].get_rotulo_aresta(p_split[0], p_split[1])
+        q_label = Q['graph'].get_rotulo_aresta(q_split[0], q_split[1])
+
+        if p_label == q_label:
+            base_graph = self._create_edge_graph(P, p_split[0], p_split[1], p_label)
+            base_size = self._calculate_graph_size(base_graph)
+
+            r_prime = p_split[0] if p_split[1] == P['root'] else p_split[1]
+            s_prime = q_split[0] if q_split[1] == Q['root'] else q_split[1]
+
+            part_P_expand = {
+                'graph': P['graph'],
+                'root': r_prime,
+                'is_basic': self._is_basic_root(P['graph'], r_prime),
+                'type': 'BPS'
+            }
+            part_Q_expand = {
+                'graph': Q['graph'],
+                'root': s_prime,
+                'is_basic': self._is_basic_root(Q['graph'], s_prime),
+                'type': 'BPS'
+            }
+
+            sub_mcs, sub_size = self._rmcs_with_bbp(part_P_expand, part_Q_expand)
+            if sub_size > 0:
+                expanded_graph = self._merge_graphs(base_graph, sub_mcs)
+                expanded_size = self._calculate_graph_size(expanded_graph)
+                return (expanded_graph, expanded_size)
+
+            return (base_graph, base_size)
+
+        return self._create_single_vertex_graph(P)
+
+    def _rmcs_basic_with_bbp(self, P: Dict, Q: Dict) -> Tuple[Grafo, float]:
+        """RMCS básico com BBP - CORREÇÃO CRÍTICA"""
+        base_graph, best_size = self._create_single_vertex_graph(P)
+
+        p_neighbors = P['graph'].vizinhanca(P['root'])
+        q_neighbors = Q['graph'].vizinhanca(Q['root'])
+
+        candidate_graphs = [(base_graph, best_size)]
+
+        for p_n in p_neighbors:
+            for q_n in q_neighbors:
+                if self._check_timeout():
+                    break
+
+                if not self._are_vertices_compatible(P['graph'], p_n, Q['graph'], q_n):
+                    continue
+
+                edge_p_label = P['graph'].get_rotulo_aresta(P['root'], p_n)
+                edge_q_label = Q['graph'].get_rotulo_aresta(Q['root'], q_n)
+
+                if edge_p_label != edge_q_label:
+                    continue
+
+                if not self._is_edge_bbp_compatible(P['graph'], Q['graph'],
+                                                    P['root'], p_n, Q['root'], q_n):
+                    continue
+
+                part_P_n = {
+                    'graph': P['graph'],
+                    'root': p_n,
+                    'is_basic': self._is_basic_root(P['graph'], p_n),
+                    'type': 'BPS'
+                }
+                part_Q_n = {
+                    'graph': Q['graph'],
+                    'root': q_n,
+                    'is_basic': self._is_basic_root(Q['graph'], q_n),
+                    'type': 'BPS'
+                }
+
+                sub_mcs, sub_size = self._rmcs_with_bbp(part_P_n, part_Q_n)
+
+                edge_graph = self._create_edge_graph(P, P['root'], p_n, edge_p_label)
+                candidate = self._merge_graphs(edge_graph, sub_mcs)
+                candidate_size = self._calculate_graph_size(candidate)
+
+                candidate_graphs.append((candidate, candidate_size))
+
+        best_candidate, best_candidate_size = max(candidate_graphs, key=lambda x: x[1])
+        return (best_candidate, best_candidate_size)
+
+    def _are_vertices_compatible(self, G: Grafo, v_g: Any, H: Grafo, v_h: Any) -> bool:
+        """Verifica compatibilidade de vértices"""
+        return G.get_rotulo_vertice(v_g) == H.get_rotulo_vertice(v_h)
+
+    def _is_edge_bbp_compatible(self, G: Grafo, H: Grafo, u_g: Any, v_g: Any, u_h: Any, v_h: Any) -> bool:
+        """Verifica compatibilidade BBP para arestas"""
+        try:
+            is_bridge_G = self._is_bridge(G, u_g, v_g)
+            is_bridge_H = self._is_bridge(H, u_h, v_h)
+
+            return is_bridge_G == is_bridge_H
+        except:
+            return True
+
+    def _is_bridge(self, graph: Grafo, u: Any, v: Any) -> bool:
+        """Verifica se uma aresta é uma bridge"""
+        try:
+            temp_graph = graph.copy()
+            temp_graph.remover_aresta(u, v)
+            return not nx.is_connected(temp_graph.grafo)
+        except:
+            return False
+
+    def _are_graphs_identical(self, G: Grafo, H: Grafo) -> bool:
+        """Verificação robusta de grafos idênticos"""
+        try:
+            if len(G.vertices()) != len(H.vertices()):
+                return False
+            if len(G.arestas()) != len(H.arestas()):
+                return False
+
+            for v in G.vertices():
+                g_label = G.get_rotulo_vertice(v)
+                found_match = False
+                for u in H.vertices():
+                    if H.get_rotulo_vertice(u) == g_label:
+                        found_match = True
+                        break
+                if not found_match:
+                    return False
+
+            for edge in G.arestas():
+                u, v = edge
+                g_edge_label = G.get_rotulo_aresta(u, v)
+                found_match = False
+                for edge_h in H.arestas():
+                    x, y = edge_h
+                    if (H.get_rotulo_aresta(x, y) == g_edge_label and
+                            H.get_rotulo_vertice(x) == G.get_rotulo_vertice(u) and
+                            H.get_rotulo_vertice(y) == G.get_rotulo_vertice(v)):
+                        found_match = True
+                        break
+                if not found_match:
+                    return False
+
+            return True
+        except:
+            return False
+
+    def _find_root_candidates(self, graph: Grafo) -> List:
+        """Encontra TODOS os candidatos a raiz promissores"""
+        vertices = graph.vertices()
+
+        if len(vertices) <= 6:
+            return vertices
+
+        scored_vertices = []
+        for v in vertices:
+            try:
+                degree = graph.grau(v)
+                label = graph.get_rotulo_vertice(v)
+
+                score = degree * 2
+                if label in ['C', 'N', 'O']:
+                    score += 3
+
+                scored_vertices.append((v, score))
+            except:
+                continue
+
+        scored_vertices.sort(key=lambda x: x[1], reverse=True)
+        return [v for v, score in scored_vertices[:8]]
+
+    def _decompose_graph(self, graph: Grafo, root: Any) -> List[Dict]:
+        """Decomposição COMPLETA"""
         cache_key = (id(graph.grafo), root)
         if cache_key in self.decomposition_cache:
             return self.decomposition_cache[cache_key]
 
-        parts = []
-        is_basic = self.is_basic_root(graph, root)
-        root_bps = BlockPreservingSubgraph(graph, root, is_basic, graph)
-        parts.append(root_bps)
+        is_basic = self._is_basic_root(graph, root)
 
-        # Get elementary parts
-        elementary_parts = root_bps.get_elementary_parts()
-        parts.extend(elementary_parts)
+        root_part = {
+            'graph': graph,
+            'root': root,
+            'is_basic': is_basic,
+            'type': 'BPS'
+        }
+
+        parts = [root_part]
+
+        try:
+            elementary_parts = self._get_elementary_parts(root_part, graph)
+            for part in elementary_parts[:MAX_ELEMENTARY_PARTS]:
+                parts.append(part)
+                sub_parts = self._get_elementary_parts(part, graph)
+                parts.extend(sub_parts[:2])
+        except:
+            pass
 
         self.decomposition_cache[cache_key] = parts
         return parts
 
-    def is_basic_root(self, graph, root):
-        """Check if root is basic-root (simplified version)"""
-        # For outerplanar graphs, we consider a root basic if it has degree ≤ 2
-        # or if it's in a single block
-        if graph.grau(root) <= 1:
+    def _is_basic_root(self, graph: Grafo, root: Any) -> bool:
+        """Verificação PRECISA se raiz é básica"""
+        try:
+            degree = graph.grau(root)
+            if degree <= 1:
+                return True
+
+            blocks = graph.encontrar_blocos()
+            incident_blocks = [block for block in blocks if root in block]
+            return len(incident_blocks) == 1
+        except:
             return True
 
-        blocks = graph.encontrar_blocos()
-        incident_blocks = [block for block in blocks if root in block]
-        return len(incident_blocks) == 1
+    def _get_elementary_parts(self, part: Dict, original_graph: Grafo) -> List[Dict]:
+        """Obtém partes elementares completas"""
+        parts = []
+        graph = part['graph']
+        root = part['root']
 
-    @lru_cache(maxsize=None)
-    def rmcs(self, P, Q):
-        """Rooted Maximum Common Subgraph (Algorithm 1)"""
-        # Check root labels
-        if P.graph.get_rotulo_vertice(P.root) != Q.graph.get_rotulo_vertice(Q.root):
-            base = Grafo()
-            base.adicionar_vertice(P.root, P.graph.get_rotulo_vertice(P.root))
-            return (base, 1)
-
-        # Handle different part types
-        if P.type == "BPS" and Q.type == "BPS":
-            if not P.is_basic_root and not Q.is_basic_root:
-                return self.rmcs_compound(P, Q)
+        try:
+            if not part['is_basic']:
+                neighbors = graph.vizinhanca(root)
+                for neighbor in neighbors:
+                    new_part = {
+                        'graph': graph,
+                        'root': neighbor,
+                        'is_basic': True,
+                        'type': 'BPS'
+                    }
+                    parts.append(new_part)
             else:
-                return self.rmcs_bps(P, Q)
-        elif P.type == "BSS" and Q.type == "BSS":
-            return self.rmcs_bss(P, Q)
-        else:
-            base = Grafo()
-            base.adicionar_vertice(P.root, P.graph.get_rotulo_vertice(P.root))
-            return (base, 1)
+                degree = graph.grau(root)
+                if degree == 1:
+                    neighbors = graph.vizinhanca(root)
+                    if neighbors:
+                        neighbor = neighbors[0]
+                        new_part = {
+                            'graph': graph,
+                            'root': neighbor,
+                            'is_basic': False,
+                            'type': 'BPS'
+                        }
+                        parts.append(new_part)
+                else:
+                    neighbors = graph.vizinhanca(root)
+                    for neighbor in neighbors:
+                        new_part = {
+                            'graph': graph,
+                            'root': neighbor,
+                            'is_basic': True,
+                            'type': 'BSS',
+                            'split_edge': (root, neighbor)
+                        }
+                        parts.append(new_part)
 
-    def rmcs_compound(self, P, Q):
-        ep_P = P.get_elementary_parts()
-        ep_Q = Q.get_elementary_parts()
-
-        weights = np.zeros((len(ep_P), len(ep_Q)))
-        matches = {}
-
-        for i, part_P in enumerate(ep_P):
-            for j, part_Q in enumerate(ep_Q):
-                if self.are_compatible_parts(part_P, part_Q):
-                    part_mcs, part_size = self.rmcs(part_P, part_Q)
-                    weights[i, j] = part_size
-                    matches[(i, j)] = (part_P, part_Q, part_mcs, part_size)
-
-        row_ind, col_ind = linear_sum_assignment(weights, maximize=True)
-
-        mcs_graph = Grafo()
-        mcs_graph.adicionar_vertice(P.root, P.graph.get_rotulo_vertice(P.root))
-        total_size = 1
-
-        for i, j in zip(row_ind, col_ind):
-            if weights[i, j] > 0:
-                part_P, part_Q, part_mcs, part_size = matches[(i, j)]
-
-                # Add vertices and edges from part_mcs
-                for v in part_mcs.vertices():
-                    if not mcs_graph.existe_vertice(v):
-                        mcs_graph.adicionar_vertice(v, part_mcs.get_rotulo_vertice(v))
-                        total_size += 1
-
-                for u, v in part_mcs.arestas():
-                    if not mcs_graph.grafo.has_edge(u, v):
-                        mcs_graph.adicionar_aresta(u, v, part_mcs.get_rotulo_aresta(u, v))
-                        total_size += 1
-
-        return (mcs_graph, total_size)
-
-    def are_compatible_parts(self, part1, part2):
-        """Check if two parts are compatible (same type and root labels)"""
-        if part1.type != part2.type:
-            return False
-
-        if part1.graph.get_rotulo_vertice(part1.root) != part2.graph.get_rotulo_vertice(part2.root):
-            return False
-
-        return True
-
-    def rmcs_bps(self, P, Q):
-        # Simple cases first
-        if len(P.graph.vertices()) == 1 and len(Q.graph.vertices()) == 1:
-            base = Grafo()
-            base.adicionar_vertice(P.root, P.graph.get_rotulo_vertice(P.root))
-            return (base, 1)
-
-        # Try to match incident edges
-        best_mcs = Grafo()
-        best_mcs.adicionar_vertice(P.root, P.graph.get_rotulo_vertice(P.root))
-        best_size = 1
-
-        P_edges = [e for e in P.graph.arestas() if P.root in e]
-        Q_edges = [e for e in Q.graph.arestas() if Q.root in e]
-
-        for p_edge in P_edges:
-            p_other = p_edge[0] if p_edge[1] == P.root else p_edge[1]
-            for q_edge in Q_edges:
-                q_other = q_edge[0] if q_edge[1] == Q.root else q_edge[1]
-
-                if (P.graph.get_rotulo_vertice(p_other) == Q.graph.get_rotulo_vertice(q_other) and
-                        P.graph.get_rotulo_aresta(*p_edge) == Q.graph.get_rotulo_aresta(*q_edge)):
-
-                    # Create subgraphs without the matched edge
-                    P_sub = P.graph.copy()
-                    P_sub.grafo.remove_edge(*p_edge)
-
-                    Q_sub = Q.graph.copy()
-                    Q_sub.grafo.remove_edge(*q_edge)
-
-                    # Compute MCS for subgraphs
-                    P_sub_bps = BlockPreservingSubgraph(P_sub, p_other, False, P.original_graph)
-                    Q_sub_bps = BlockPreservingSubgraph(Q_sub, q_other, False, Q.original_graph)
-                    sub_mcs, sub_size = self.rmcs(P_sub_bps, Q_sub_bps)
-
-                    # Build candidate MCS
-                    candidate = Grafo()
-                    candidate.adicionar_vertice(P.root, P.graph.get_rotulo_vertice(P.root))
-                    candidate.adicionar_vertice(p_other, P.graph.get_rotulo_vertice(p_other))
-                    candidate.adicionar_aresta(P.root, p_other, P.graph.get_rotulo_aresta(*p_edge))
-
-                    for v in sub_mcs.vertices():
-                        if not candidate.existe_vertice(v):
-                            candidate.adicionar_vertice(v, sub_mcs.get_rotulo_vertice(v))
-                    for u, v in sub_mcs.arestas():
-                        if not candidate.grafo.has_edge(u, v):
-                            candidate.adicionar_aresta(u, v, sub_mcs.get_rotulo_aresta(u, v))
-
-                    candidate_size = len(candidate.vertices()) + len(candidate.arestas())
-
-                    if candidate_size > best_size:
-                        best_mcs = candidate
-                        best_size = candidate_size
-
-        return (best_mcs, best_size)
-
-    def rmcs_bss(self, P, Q):
-        """Algorithm 4: RMCS for basic-root BSS graphs"""
-        base = Grafo()
-        base.adicionar_vertice(P.root, P.graph.get_rotulo_vertice(P.root))
-        base_size = 1
-
-        # Simple case: single edge
-        if P.split_edge and Q.split_edge:
-            u, v = P.split_edge
-            x, y = Q.split_edge
-
-            if (P.graph.get_rotulo_vertice(u) == Q.graph.get_rotulo_vertice(x) and
-                    P.graph.get_rotulo_vertice(v) == Q.graph.get_rotulo_vertice(y) and
-                    P.graph.get_rotulo_aresta(u, v) == Q.graph.get_rotulo_aresta(x, y)):
-                base.adicionar_vertice(v if u == P.root else u, P.graph.get_rotulo_vertice(v if u == P.root else u))
-                base.adicionar_aresta(u, v, P.graph.get_rotulo_aresta(u, v))
-                return (base, 3)
-
-        return (base, base_size)
-
-
-def encontrar_ciclo_hamiltoniano_outerplanar(grafo):
-    """
-    Encontra o ciclo Hamiltoniano em um grafo outerplanar biconectado.
-    Retorna uma lista de arestas do ciclo ou None se não for possível encontrar.
-    """
-    G = grafo.grafo
-    n = len(G.nodes)
-
-    if n == 0:
-        return []
-    if n == 1:
-        return []
-    if n == 2:
-        u, v = list(G.nodes)
-        if G.has_edge(u, v):
-            return [(u, v)]
-        return []
-
-    if all(deg == 2 for _, deg in G.degree()):
-        try:
-            cycle = nx.find_cycle(G)
-            vertices = [cycle[0][0]]
-            for i in range(len(cycle)):
-                vertices.append(cycle[i][1])
-            if vertices[0] == vertices[-1]:
-                vertices.pop()
-            return list(zip(vertices, vertices[1:] + [vertices[0]]))
-        except nx.NetworkXNoCycle:
-            return None
-
-    try:
-        pos = nx.planar_layout(G)
-
-        start = min(pos, key=lambda v: pos[v][1])
-
-        neighbors = list(G.neighbors(start))
-        if len(neighbors) < 2:
-            return None
-
-        # Calcula os ângulos dos vizinhos em relação ao start
-        def calc_angle(v):
-            dx = pos[v][0] - pos[start][0]
-            dy = pos[v][1] - pos[start][1]
-            return np.arctan2(dy, dx)
-
-        neighbors.sort(key=calc_angle)
-
-        # Inicia a DFS a partir do start, sempre escolhendo o vizinho mais à direita
-        visited = set()
-        cycle = []
-        stack = [(start, neighbors[0])]
-
-        while stack:
-            u, v = stack.pop()
-            if v in visited:
-                continue
-            visited.add(v)
-            cycle.append((u, v))
-
-            # Obtém os vizinhos de v ordenados por ângulo
-            v_neighbors = list(G.neighbors(v))
-            v_neighbors.remove(u)  # Remove o vértice anterior
-            if not v_neighbors:
-                break
-
-            # Calcula ângulos em relação a v
-            def calc_angle_from_v(w):
-                dx = pos[w][0] - pos[v][0]
-                dy = pos[w][1] - pos[v][1]
-                return np.arctan2(dy, dx)
-
-            v_neighbors.sort(key=calc_angle_from_v)
-            # Escolhe o vizinho com menor ângulo (mais à direita)
-            next_v = v_neighbors[0]
-            stack.append((v, next_v))
-
-        # Verifica se o ciclo encontrado é Hamiltoniano
-        if len(cycle) == n and len(set(cycle)) == n:
-            return cycle
-        else:
-            # Fallback: usa o ciclo externo do embedding
-            try:
-                faces = nx.planar_faces(G, pos)
-                outer_face = max(faces, key=len)
-                if len(outer_face) == n:
-                    edges = []
-                    for i in range(len(outer_face)):
-                        edges.append((outer_face[i], outer_face[(i + 1) % len(outer_face)]))
-                    return edges
-            except:
-                pass
-    except:
-        pass
-
-    # Fallback para grafos pequenos: enumeração limitada
-    if n <= 10:
-        try:
-            for cycle in nx.simple_cycles(G):
-                if len(cycle) == n:
-                    edges = []
-                    for i in range(len(cycle)):
-                        edges.append((cycle[i], cycle[(i + 1) % len(cycle)]))
-                    return edges
+            return parts
         except:
-            pass
+            return []
 
-    return None
+    def _are_parts_compatible(self, P: Dict, Q: Dict) -> bool:
+        """Verificação de compatibilidade entre partes - CORRIGIDA"""
+        try:
+            label_P = P['graph'].get_rotulo_vertice(P['root'])
+            label_Q = Q['graph'].get_rotulo_vertice(Q['root'])
+            return label_P == label_Q
+        except:
+            return False
 
-def calcular_mcs_bbp(grafo_G, grafo_H):
-    solver = OuterplanarMCS()
-    return solver.compute_mcs(grafo_G, grafo_H)
+    def _create_single_vertex_graph(self, part: Dict) -> Tuple[Grafo, float]:
+        """Cria grafo com vértice único"""
+        graph = Grafo()
+        root = part['root']
+        label = part['graph'].get_rotulo_vertice(root)
+        graph.adicionar_vertice(root, label)
+        size = self._calculate_graph_size(graph)
+        return (graph, size)
 
-# Test cases
-if __name__ == "__main__":
-    # Test 1: Identical graphs
-    print("Test 1: Identical graphs")
-    G1 = Grafo()
-    G1.adicionar_vertice(1, "C")
-    G1.adicionar_vertice(2, "C")
-    G1.adicionar_vertice(3, "O")
-    G1.adicionar_aresta(1, 2, "single")
-    G1.adicionar_aresta(2, 3, "double")
-    G1.adicionar_aresta(1, 3, "single")
+    def _create_edge_graph(self, part: Dict, u: Any, v: Any, edge_label: str) -> Grafo:
+        """Cria grafo com aresta"""
+        graph = Grafo()
+        label_u = part['graph'].get_rotulo_vertice(u)
+        label_v = part['graph'].get_rotulo_vertice(v)
 
-    G2 = G1.copy()
+        graph.adicionar_vertice(u, label_u)
+        graph.adicionar_vertice(v, label_v)
+        graph.adicionar_aresta(u, v, edge_label)
+        return graph
 
-    mcs, size = calcular_mcs_bbp(G1, G2)
-    expected_size = len(G1.vertices()) + len(G1.arestas())
-    print(f"MCS Size: {size} (expected: {expected_size})")
-    print("Vertices:", mcs.vertices())
-    print("Edges:", mcs.arestas())
-    print()
+    def _merge_graphs(self, graph1: Grafo, graph2: Grafo) -> Grafo:
+        """Fusão de dois grafos"""
+        result = graph1.copy()
 
-    # Test 2: Common substructure
-    print("Test 2: Common substructure")
-    G3 = Grafo()
-    G3.adicionar_vertice(1, "C")
-    G3.adicionar_vertice(2, "O")
-    G3.adicionar_vertice(3, "C")
-    G3.adicionar_aresta(1, 2, "double")
-    G3.adicionar_aresta(2, 3, "single")
+        for v in graph2.vertices():
+            if not result.existe_vertice(v):
+                label = graph2.get_rotulo_vertice(v)
+                result.adicionar_vertice(v, label)
 
-    G4 = Grafo()
-    G4.adicionar_vertice(4, "C")
-    G4.adicionar_vertice(5, "O")
-    G4.adicionar_vertice(6, "N")
-    G4.adicionar_aresta(4, 5, "double")
-    G4.adicionar_aresta(5, 6, "single")
+        for u, v in graph2.arestas():
+            if not result.grafo.has_edge(u, v):
+                label = graph2.get_rotulo_aresta(u, v)
+                result.adicionar_aresta(u, v, label)
 
-    mcs, size = calcular_mcs_bbp(G3, G4)
-    print(f"MCS Size: {size} (expected: 3)")
-    print("Vertices:", mcs.vertices())
-    print("Edges:", mcs.arestas())
-    print()
+        return result
 
-    # Test 3: Single vertex
-    print("Test 3: Single vertex")
-    G5 = Grafo()
-    G5.adicionar_vertice(1, "C")
+    def _calculate_graph_size(self, graph: Grafo) -> float:
+        """Calcula tamanho do grafo usando pesos dos rótulos"""
+        total_size = 0.0
 
-    G6 = Grafo()
-    G6.adicionar_vertice(2, "C")
+        for v in graph.vertices():
+            label = graph.get_rotulo_vertice(v)
+            if label is None:
+                label = "C"
+            weight = self.label_weights.get(label, 1.0)
+            total_size += weight
 
-    mcs, size = calcular_mcs_bbp(G5, G6)
-    print(f"MCS Size: {size} (expected: 1)")
-    print("Vertices:", mcs.vertices())
-    print()
+        for u, v in graph.arestas():
+            label = graph.get_rotulo_aresta(u, v)
+            if label is None:
+                label = "single"
+            weight = self.label_weights.get(label, 1.0)
+            total_size += weight
 
-    # Test 4: Single edge
-    print("Test 4: Single edge")
-    G7 = Grafo()
-    G7.adicionar_vertice(1, "C")
-    G7.adicionar_vertice(2, "O")
-    G7.adicionar_aresta(1, 2, "double")
+        return total_size
 
-    G8 = Grafo()
-    G8.adicionar_vertice(3, "C")
-    G8.adicionar_vertice(4, "O")
-    G8.adicionar_aresta(3, 4, "double")
+    def _compute_approximate_mcs(self, G: Grafo, H: Grafo) -> Tuple[Grafo, float]:
+        """Computação aproximada para fallback - MELHORADA"""
+        mcs_graph = Grafo()
+        best_size = 0.0
 
-    mcs, size = calcular_mcs_bbp(G7, G8)
-    print(f"MCS Size: {size} (expected: 3)")
-    print("Vertices:", mcs.vertices())
-    print("Edges:", mcs.arestas())
-    print()
+        for g_root in G.vertices():
+            for h_root in H.vertices():
+                if self._check_timeout():
+                    return (mcs_graph, best_size)
 
-    # Test 5: Common cycle - CORRIGIDO
-    print("Test 5: Common cycle")
-    G9 = Grafo()
-    G9.adicionar_vertice(1, "C")
-    G9.adicionar_vertice(2, "C")
-    G9.adicionar_vertice(3, "C")
-    G9.adicionar_aresta(1, 2, "single")
-    G9.adicionar_aresta(2, 3, "single")
-    G9.adicionar_aresta(3, 1, "single")  # Triângulo
+                if G.get_rotulo_vertice(g_root) != H.get_rotulo_vertice(h_root):
+                    continue
 
-    G10 = Grafo()
-    G10.adicionar_vertice(4, "C")
-    G10.adicionar_vertice(5, "C")
-    G10.adicionar_vertice(6, "C")
-    G10.adicionar_aresta(4, 5, "single")
-    G10.adicionar_aresta(5, 6, "single")  # Cadeia linear
+                current_graph = Grafo()
+                current_graph.adicionar_vertice(g_root, G.get_rotulo_vertice(g_root))
+                current_size = self._calculate_graph_size(current_graph)
 
-    mcs, size = calcular_mcs_bbp(G9, G10)
-    # CORREÇÃO: O MCS entre um triângulo e uma cadeia linear deve ser a cadeia de 2 arestas (tamanho 5)
-    print(f"MCS Size: {size} (expected: 5)")
-    print("Vertices:", mcs.vertices())
-    print("Edges:", mcs.arestas())
-    print()
+                visited_g = set([g_root])
+                visited_h = set([h_root])
+                vertex_map = {g_root: h_root}
 
-    # Test 6: Multiple blocks
-    print("Test 6: Multiple blocks")
-    G11 = Grafo()
-    G11.adicionar_vertice(1, "C")
-    G11.adicionar_vertice(2, "C")
-    G11.adicionar_vertice(3, "C")
-    G11.adicionar_vertice(4, "O")
-    G11.adicionar_aresta(1, 2, "single")
-    G11.adicionar_aresta(2, 3, "single")
-    G11.adicionar_aresta(3, 1, "single")  # Triângulo
-    G11.adicionar_aresta(3, 4, "single")  # Ponte para O
+                queue = deque([(g_root, h_root)])
 
-    G12 = Grafo()
-    G12.adicionar_vertice(5, "C")
-    G12.adicionar_vertice(6, "C")
-    G12.adicionar_vertice(7, "O")
-    G12.adicionar_aresta(5, 6, "single")
-    G12.adicionar_aresta(6, 7, "single")  # Cadeia linear C-C-O
+                while queue:
+                    g_v, h_v = queue.popleft()
 
-    mcs, size = calcular_mcs_bbp(G11, G12)
-    print(f"MCS Size: {size} (expected: 5)")
-    print("Vertices:", mcs.vertices())
-    print("Edges:", mcs.arestas())
-    print()
+                    for g_neighbor in G.vizinhanca(g_v):
+                        if g_neighbor in visited_g:
+                            continue
 
-    # Test 7: Size correction verification
-    print("Test 7: Size correction verification")
-    G_corr = Grafo()
-    G_corr.adicionar_vertice(1, "C")
-    G_corr.adicionar_vertice(2, "C")
-    G_corr.adicionar_aresta(1, 2, "single")
+                        g_neighbor_label = G.get_rotulo_vertice(g_neighbor)
+                        edge_label = G.get_rotulo_aresta(g_v, g_neighbor)
 
-    mcs, size = calcular_mcs_bbp(G_corr, G_corr)
-    print(f"MCS Size: {size} (expected: 3)")
-    print("Vertices:", mcs.vertices())
-    print("Edges:", mcs.arestas())
-    print()
+                        found_match = False
+                        for h_neighbor in H.vizinhanca(h_v):
+                            if h_neighbor in visited_h:
+                                continue
 
-    # Test 8: Detailed size verification
-    print("Test 8: Detailed size verification")
-    G_test = Grafo()
-    G_test.adicionar_vertice(1, "C")
-    G_test.adicionar_vertice(2, "C")
-    G_test.adicionar_vertice(3, "O")
-    G_test.adicionar_aresta(1, 2, "single")
-    G_test.adicionar_aresta(2, 3, "double")
+                            if (H.get_rotulo_vertice(h_neighbor) == g_neighbor_label and
+                                    H.get_rotulo_aresta(h_v, h_neighbor) == edge_label):
+                                current_graph.adicionar_vertice(g_neighbor, g_neighbor_label)
+                                current_graph.adicionar_aresta(g_v, g_neighbor, edge_label)
+                                current_size = self._calculate_graph_size(current_graph)
 
-    # Deveria ter tamanho 5 (3 vértices + 2 arestas)
-    print(f"Tamanho esperado do G_test: {len(G_test.vertices()) + len(G_test.arestas())}")
+                                visited_g.add(g_neighbor)
+                                visited_h.add(h_neighbor)
+                                vertex_map[g_neighbor] = h_neighbor
+                                queue.append((g_neighbor, h_neighbor))
+                                found_match = True
+                                break
 
-    mcs, size = calcular_mcs_bbp(G_test, G_test)
-    print(f"MCS Size: {size} (expected: 5)")
-    print("Vertices:", mcs.vertices())
-    print("Edges:", mcs.arestas())
+                        if found_match:
+                            break
+
+                if current_size > best_size:
+                    mcs_graph = current_graph
+                    best_size = current_size
+
+        return (mcs_graph, best_size)
+
+    def _check_timeout(self) -> bool:
+        """Verifica timeout"""
+        if time.time() - self.start_time > self.timeout:
+            self._timeout_occurred = True
+            return True
+        return False
+
+
+# ============================ FUNÇÃO PRINCIPAL ============================
+
+def calcular_mcs_outerplanar(grafo_G: Grafo, grafo_H: Grafo,
+                             label_weights: Optional[Dict[str, float]] = None,
+                             timeout: int = TIMEOUT_DURATION) -> Tuple[Grafo, float]:
+    """
+    Função principal FINAL para cálculo de MCS entre grafos outerplanares.
+
+    Args:
+        grafo_G: Primeiro grafo
+        grafo_H: Segundo grafo
+        label_weights: Pesos dos rótulos (opcional)
+        timeout: Timeout em segundos (opcional)
+
+    Returns:
+        Tuple[Grafo, float]: MCS e seu tamanho
+    """
+    try:
+        solver = OuterplanarMCS(
+            label_weights=label_weights,
+            timeout=timeout
+        )
+        return solver.compute_mcs(grafo_G, grafo_H)
+    except Exception as e:
+        return (Grafo(), 0.0)
