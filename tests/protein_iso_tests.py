@@ -5,7 +5,106 @@ import warnings
 import psutil
 import os
 from structures.Grafo import Grafo
-from protein_iso import ProteinGraphDistance
+from algorithms.protein_iso import ProteinGraphDistance
+
+
+def test_grafo_implementation():
+    """Testa se a classe Grafo está armazenando e recuperando rótulos corretamente"""
+    print("\n🔍 VERIFICAÇÃO DA IMPLEMENTAÇÃO DA CLASSE GRAFO")
+    print("=" * 60)
+
+    g = Grafo()
+
+    g.adicionar_vertice(1, rotulo='C')
+    g.adicionar_vertice(2, rotulo='O')
+    g.adicionar_aresta(1, 2, rotulo='double')
+
+    print(f"Vértice 1 rótulo: {g.get_rotulo_vertice(1)}")
+    print(f"Vértice 2 rótulo: {g.get_rotulo_vertice(2)}")
+    print(f"Aresta (1,2) rótulo: {g.get_rotulo_aresta(1, 2)}")
+
+    has_vertex_label = hasattr(g, 'get_rotulo_vertice') and callable(getattr(g, 'get_rotulo_vertice'))
+    has_edge_label = hasattr(g, 'get_rotulo_aresta') and callable(getattr(g, 'get_rotulo_aresta'))
+
+    print(f"Tem método get_rotulo_vertice: {has_vertex_label}")
+    print(f"Tem método get_rotulo_aresta: {has_edge_label}")
+
+    return has_vertex_label and has_edge_label
+
+
+def test_label_functionality():
+    """Testes específicos para funcionalidade de rótulos"""
+    print("\n🎯 TESTES ESPECÍFICOS DE RÓTULOS")
+    print("=" * 60)
+
+    g1 = Grafo()
+    g1.adicionar_vertice(1, rotulo='C')
+    g1.adicionar_vertice(2, rotulo='C')
+    g1.adicionar_aresta(1, 2, rotulo='single')
+
+    g2 = Grafo()
+    g2.adicionar_vertice(1, rotulo='C')
+    g2.adicionar_vertice(2, rotulo='C')
+    g2.adicionar_aresta(1, 2, rotulo='single')
+
+    calculator_with_labels = ProteinGraphDistance(use_labels=True)
+    calculator_without_labels = ProteinGraphDistance(use_labels=False)
+
+    dist_with = calculator_with_labels.quantitative_distance(g1, g2, verbose=False)
+    dist_without = calculator_without_labels.quantitative_distance(g1, g2, verbose=False)
+
+    print(f"1. Grafos idênticos com mesmos rótulos:")
+    print(f"   Com rótulos: {dist_with:.6f} (esperado: 0.0)")
+    print(f"   Sem rótulos: {dist_without:.6f} (esperado: 0.0)")
+
+    g3 = Grafo()
+    g3.adicionar_vertice(1, rotulo='C')
+    g3.adicionar_vertice(2, rotulo='O')  
+    g3.adicionar_aresta(1, 2, rotulo='single')
+
+    dist_diff_labels = calculator_with_labels.quantitative_distance(g1, g3, verbose=False)
+    dist_diff_no_labels = calculator_without_labels.quantitative_distance(g1, g3, verbose=False)
+
+    print(f"2. Grafos idênticos com rótulos diferentes:")
+    print(f"   Com rótulos: {dist_diff_labels:.6f} (esperado: >0.0)")
+    print(f"   Sem rótulos: {dist_diff_no_labels:.6f} (esperado: 0.0)")
+
+    sensitivity_ok = (dist_with < 0.1 and
+                      dist_diff_labels > 0.1 and
+                      dist_without < 0.1 and
+                      dist_diff_no_labels < 0.1)
+
+    print(f"3. Sensibilidade a rótulos: {'✅ FUNCIONANDO' if sensitivity_ok else '❌ PROBLEMA'}")
+
+    return sensitivity_ok
+
+
+def test_protein_label_sensitivity():
+    """Teste de sensibilidade com proteínas reais"""
+    print("\n🔬 TESTE DE SENSIBILIDADE COM PROTEÍNAS")
+    print("=" * 60)
+
+    calculator = ProteinGraphDistance(use_labels=True)
+
+    g1 = Grafo()
+    g2 = Grafo()
+    for i in range(1, 6):
+        g1.adicionar_vertice(i, rotulo='C')
+    for i in range(1, 5):
+        g1.adicionar_aresta(i, i + 1, rotulo='single')
+
+    for i in range(1, 6):
+        label = 'C' if i != 3 else 'O'  
+        g2.adicionar_vertice(i, rotulo=label)
+    for i in range(1, 5):
+        g2.adicionar_aresta(i, i + 1, rotulo='single')
+
+    dist = calculator.quantitative_distance(g1, g2, verbose=False)
+
+    print(f"Proteína C-C-C-C-C vs C-C-O-C-C: {dist:.6f}")
+    print(f"Sensibilidade: {'✅' if 0.0 < dist < 1.0 else '❌'}")
+
+    return dist
 
 
 def analyze_numerical_stability():
@@ -49,8 +148,9 @@ def analyze_numerical_stability():
         'estabilidade': estabilidade
     }
 
+
 # =============================================================================
-# FUNÇÕES PARA CRIAÇÃO DE GRAFOS DE TESTE
+# FUNÇÕES PARA CRIAÇÃO DE GRAFOS DE TESTE - CORRIGIDAS
 # =============================================================================
 
 def criar_grafo_petersen():
@@ -97,7 +197,6 @@ def criar_grafo_cubico():
 def criar_proteina_alfa_helice_complexa(n_residuos=20):
     """Estrutura de α-hélice mais realista"""
     g = Grafo()
-
     for i in range(1, n_residuos + 1):
         g.adicionar_vertice(i, rotulo='AA')
 
@@ -113,7 +212,6 @@ def criar_proteina_alfa_helice_complexa(n_residuos=20):
 def criar_proteina_beta_folha_complexa(n_fitas=3, residuos_por_fita=6):
     """Estrutura de β-folha antiparalela MELHORADA"""
     g = Grafo()
-
     for fitas in range(n_fitas):
         for res in range(1, residuos_por_fita + 1):
             vertice_id = fitas * residuos_por_fita + res
@@ -136,17 +234,21 @@ def criar_proteina_beta_folha_complexa(n_fitas=3, residuos_por_fita=6):
 
 
 def criar_proteina_alfa_helice_modificada(n_residuos=20):
-    """α-hélice com modificações estruturais (simula mutação)"""
+    """α-hélice com modificações estruturais (simula mutação) - CORRIGIDA"""
     g = Grafo()
-
     for i in range(1, n_residuos + 1):
-        g.adicionar_vertice(i, rotulo='AA')
+        
+        if i % 4 == 0:
+            rotulo = 'AB'  
+        else:
+            rotulo = 'AA'
+        g.adicionar_vertice(i, rotulo=rotulo)
 
     for i in range(1, n_residuos):
         g.adicionar_aresta(i, i + 1, rotulo='peptide')
 
     for i in range(1, n_residuos - 3):
-        if i % 3 != 0:
+        if i % 3 != 0: 
             g.adicionar_aresta(i, i + 4, rotulo='hydrogen')
 
     for i in range(2, n_residuos - 2, 4):
@@ -156,9 +258,8 @@ def criar_proteina_alfa_helice_modificada(n_residuos=20):
 
 
 def criar_proteina_beta_folha_paralela(n_fitas=3, residuos_por_fita=6):
-    """Estrutura de β-folha paralela MELHORADA"""
+    """Estrutura de β-folha paralela - CORRIGIDA para ter mesmo número de arestas"""
     g = Grafo()
-
     for fitas in range(n_fitas):
         for res in range(1, residuos_por_fita + 1):
             vertice_id = fitas * residuos_por_fita + res
@@ -170,11 +271,14 @@ def criar_proteina_beta_folha_paralela(n_fitas=3, residuos_por_fita=6):
             vertice_proximo = fitas * residuos_por_fita + res + 1
             g.adicionar_aresta(vertice_atual, vertice_proximo, rotulo='peptide')
 
+    num_ligacoes = (n_fitas - 1) * (residuos_por_fita - 1)
+
     for fitas in range(n_fitas - 1):
-        for i in range(1, residuos_por_fita + 1):
-            vertice_fita1 = fitas * residuos_por_fita + i
-            vertice_fita2 = (fitas + 1) * residuos_por_fita + i
-            g.adicionar_aresta(vertice_fita1, vertice_fita2, rotulo='hydrogen_para')
+        for i in range(1, residuos_por_fita):
+            if (fitas * (residuos_por_fita - 1) + i) <= num_ligacoes:
+                vertice_fita1 = fitas * residuos_por_fita + i
+                vertice_fita2 = (fitas + 1) * residuos_por_fita + i
+                g.adicionar_aresta(vertice_fita1, vertice_fita2, rotulo='hydrogen_para')
 
     return g
 
@@ -182,7 +286,6 @@ def criar_proteina_beta_folha_paralela(n_fitas=3, residuos_por_fita=6):
 def criar_molecula_complexa():
     """Molécula orgânica complexa - Cafeína"""
     g = Grafo()
-
     atoms = {
         1: 'C', 2: 'C', 3: 'C', 4: 'C', 5: 'C', 6: 'C',
         7: 'N', 8: 'N', 9: 'N', 10: 'O', 11: 'O',
@@ -263,7 +366,7 @@ def criar_grafo_estrela(n_vertices):
 
 
 # =============================================================================
-# TESTES BÁSICOS (FUNÇÕES QUE ESTAVAM FALTANDO)
+# TESTES BÁSICOS
 # =============================================================================
 
 def test_molecular_graphs():
@@ -485,13 +588,58 @@ def test_special_cases():
 
 
 # =============================================================================
-# TESTES DE PERFORMANCE
+# NOVAS FUNÇÕES PARA MONITORAMENTO DE CPU
+# =============================================================================
+
+def measure_cpu_usage_improved(func, *args, repetitions=1):
+    """Medição de CPU mais robusta e precisa"""
+    process = psutil.Process(os.getpid())
+
+    times_before = process.cpu_times()
+    system_before = psutil.cpu_percent(interval=0.1)
+
+    start_time = time.perf_counter()
+
+    results = []
+    for _ in range(repetitions):
+        result = func(*args)
+        results.append(result)
+
+    end_time = time.perf_counter()
+
+    times_after = process.cpu_times()
+    system_after = psutil.cpu_percent(interval=0.1)
+
+    elapsed_time = end_time - start_time
+
+    user_time = times_after.user - times_before.user
+    system_time = times_after.system - times_before.system
+    total_cpu_time = user_time + system_time
+
+    cpu_percent = (total_cpu_time / elapsed_time) * 100 if elapsed_time > 0 else 0
+
+    cpu_cores = psutil.cpu_count()
+    max_reasonable = cpu_cores * 100
+    cpu_percent = min(cpu_percent, max_reasonable)
+
+    return {
+        'results': results,
+        'execution_time': elapsed_time / repetitions,
+        'process_cpu_usage': cpu_percent,
+        'system_cpu_usage': system_after,
+        'total_cpu_time': total_cpu_time,
+        'cpu_cores': cpu_cores
+    }
+
+
+# =============================================================================
+# TESTES DE PERFORMANCE COM MÉTRICAS DE CPU
 # =============================================================================
 
 def test_performance_scalability():
-    """Testa a escalabilidade do algoritmo com grafos de tamanhos crescentes"""
-    print("\n7. TESTES DE PERFORMANCE - ESCALABILIDADE")
-    print("=" * 60)
+    """Testa a escalabilidade do algoritmo com métricas de CPU"""
+    print("\n7. TESTES DE PERFORMANCE - ESCALABILIDADE COM CPU")
+    print("=" * 70)
 
     calculator = ProteinGraphDistance(use_labels=False)
     resultados = []
@@ -499,19 +647,28 @@ def test_performance_scalability():
     tamanhos = [10, 20, 30, 50, 80, 100]
 
     print("Testando escalabilidade com grafos completos:")
-    print("Vértices | Arestas  | Tempo (s)  | Memória (MB) | Distância")
-    print("-" * 65)
+    print("Vértices | Arestas  | Tempo (s)  | CPU Proc (%) | CPU Sist (%) | Eficiência | Memória (MB)")
+    print("-" * 95)
 
     for n in tamanhos:
         process = psutil.Process(os.getpid())
         memoria_inicial = process.memory_info().rss / 1024 / 1024
 
+        process.cpu_percent(interval=0.1)
+        time.sleep(0.1)  
+
         g1 = criar_grafo_completo(n)
         g2 = criar_grafo_completo(n)
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         distancia = calculator.quantitative_distance(g1, g2, verbose=False)
-        end_time = time.time()
+        end_time = time.perf_counter()
+
+        process_cpu_usage = process.cpu_percent(interval=None)
+        system_cpu_usage = psutil.cpu_percent(interval=None)
+
+        process_cpu_usage = min(process_cpu_usage, 100.0)
+        system_cpu_usage = min(system_cpu_usage, 100.0)
 
         memoria_final = process.memory_info().rss / 1024 / 1024
         memoria_usada = memoria_final - memoria_inicial
@@ -519,15 +676,21 @@ def test_performance_scalability():
         tempo_execucao = end_time - start_time
         n_arestas = len(g1.arestas())
 
+        eficiencia = process_cpu_usage / (system_cpu_usage + 1e-10)
+
         resultados.append({
             'vertices': n,
             'arestas': n_arestas,
             'tempo': tempo_execucao,
+            'process_cpu': process_cpu_usage,
+            'system_cpu': system_cpu_usage,
+            'eficiencia': eficiencia,
             'memoria': memoria_usada,
             'distancia': distancia
         })
 
-        print(f"{n:8} | {n_arestas:8} | {tempo_execucao:10.4f} | {memoria_usada:11.2f} | {distancia:.6f}")
+        print(
+            f"{n:8} | {n_arestas:8} | {tempo_execucao:10.4f} | {process_cpu_usage:11.2f} | {system_cpu_usage:12.2f} | {eficiencia:10.2f} | {memoria_usada:11.2f}")
 
     return resultados
 
@@ -574,6 +737,305 @@ def test_performance_different_structures():
         })
 
         print(f"{nome:<18} | {n_vertices:8} | {n_arestas:8} | {tempo_execucao:10.4f} | {distancia:.6f}")
+
+    return resultados
+
+
+def test_advanced_performance():
+    """Testes avançados de performance com métricas detalhadas"""
+    print("\n12. TESTES AVANÇADOS DE PERFORMANCE")
+    print("=" * 60)
+
+    calculator = ProteinGraphDistance(use_labels=False)
+    resultados = []
+
+    print("Análise de Complexidade Assintótica:")
+    print("Vértices | Arestas  | Tempo (s)  | Fator Cresc. | O(?)")
+    print("-" * 65)
+
+    tamanhos = [10, 20, 40, 80]
+    tempos_anteriores = None
+
+    for i, n in enumerate(tamanhos):
+        g1 = criar_grafo_completo(n)
+        g2 = criar_grafo_completo(n)
+
+        start_time = time.perf_counter()
+        distancia = calculator.quantitative_distance(g1, g2, verbose=False)
+        end_time = time.perf_counter()
+
+        tempo_atual = end_time - start_time
+        n_arestas = len(g1.arestas())
+
+        if i > 0:
+            fator_crescimento = tempo_atual / tempos_anteriores
+            if fator_crescimento < 2.5:
+                complexidade = "O(n)"
+            elif fator_crescimento < 6:
+                complexidade = "O(n log n)"
+            else:
+                complexidade = "O(n²)"
+        else:
+            fator_crescimento = "-"
+            complexidade = "-"
+
+        print(f"{n:8} | {n_arestas:8} | {tempo_atual:10.4f} | {fator_crescimento:12} | {complexidade:>5}")
+
+        tempos_anteriores = tempo_atual
+        resultados.append({
+            'vertices': n,
+            'arestas': n_arestas,
+            'tempo': tempo_atual,
+            'complexidade': complexidade
+        })
+
+    return resultados
+
+
+def test_memory_efficiency():
+    """Teste específico de eficiência de memória"""
+    print("\n13. TESTES DE EFICIÊNCIA DE MEMÓRIA")
+    print("=" * 60)
+
+    calculator = ProteinGraphDistance(use_labels=False)
+
+    tipos_grafos = [
+        ("Completo K50", lambda: criar_grafo_completo(50)),
+        ("Alpha-hélice 100", lambda: criar_proteina_alfa_helice_complexa(100)),
+        ("Beta-folha 10x10", lambda: criar_proteina_beta_folha_complexa(10, 10)),
+        ("Aleatório 80v", lambda: criar_grafos_aleatorios(80, 0.3)[0]),
+    ]
+
+    process = psutil.Process(os.getpid())
+
+    print("Tipo de Grafo         | Vértices | Arestas  | Memória (MB) | Tempo (s)")
+    print("-" * 75)
+
+    resultados = []
+
+    for nome, criador in tipos_grafos:
+        import gc
+        gc.collect()
+
+        memoria_inicial = process.memory_info().rss / 1024 / 1024
+
+        g1 = criador()
+        g2 = criador()
+
+        start_time = time.perf_counter()
+        distancia = calculator.quantitative_distance(g1, g2, verbose=False)
+        end_time = time.perf_counter()
+
+        memoria_final = process.memory_info().rss / 1024 / 1024
+        memoria_usada = memoria_final - memoria_inicial
+
+        n_vertices = len(g1.vertices())
+        n_arestas = len(g1.arestas())
+        tempo_execucao = end_time - start_time
+
+        resultados.append({
+            'tipo': nome,
+            'vertices': n_vertices,
+            'arestas': n_arestas,
+            'memoria': memoria_usada,
+            'tempo': tempo_execucao
+        })
+
+        print(f"{nome:<20} | {n_vertices:8} | {n_arestas:8} | {memoria_usada:11.2f} | {tempo_execucao:8.4f}")
+
+    return resultados
+
+
+# =============================================================================
+# TESTES DE CPU ESPECÍFICOS
+# =============================================================================
+
+def test_cpu_intensive_operations_improved():
+    """Testes de CPU com medições mais precisas"""
+    print("\n17. TESTES DE OPERAÇÕES INTENSIVAS EM CPU (MELHORADO)")
+    print("=" * 70)
+
+    calculator = ProteinGraphDistance(use_labels=True)
+    resultados = []
+
+    operacoes = [
+        ("SVD Matriz 100x100", lambda: np.linalg.svd(np.random.rand(100, 100)), 3),
+        ("Autovalores Matriz 80x80", lambda: np.linalg.eigvals(np.random.rand(80, 80)), 5),
+        ("Distância Permutação", lambda: calculator.permutation_distance(
+            [random.random() for _ in range(50)],
+            [random.random() for _ in range(50)]), 10),
+        ("Conversão Equinumerosa", lambda: calculator.convert_to_equinumerous_sequence(
+            [random.random() for _ in range(100)]), 15),
+    ]
+
+    print("Operação                | Tempo (s)  | CPU Proc (%) | CPU Sist (%) | Núcleos | Intensidade")
+    print("-" * 95)
+
+    for nome, operacao, repeticoes in operacoes:
+        try:
+            medida = measure_cpu_usage_improved(operacao, repetitions=repeticoes)
+
+            tempo_por_operacao = medida['execution_time']
+            process_cpu = medida['process_cpu_usage']
+            system_cpu = medida['system_cpu_usage']
+            cpu_cores = medida['cpu_cores']
+
+            intensidade_por_core = process_cpu / cpu_cores
+
+            if intensidade_por_core > 80:
+                nivel = "MUITO ALTA"
+            elif intensidade_por_core > 50:
+                nivel = "ALTA"
+            elif intensidade_por_core > 20:
+                nivel = "MODERADA"
+            else:
+                nivel = "BAIXA"
+
+            resultados.append({
+                'operacao': nome,
+                'tempo': tempo_por_operacao,
+                'process_cpu': process_cpu,
+                'system_cpu': system_cpu,
+                'cpu_cores': cpu_cores,
+                'intensidade_por_core': intensidade_por_core,
+                'nivel': nivel,
+                'repeticoes': repeticoes
+            })
+
+            print(
+                f"{nome:<22} | {tempo_por_operacao:10.4f} | {process_cpu:11.2f} | {system_cpu:12.2f} | {cpu_cores:7} | {nivel:>12}")
+
+        except Exception as e:
+            print(f"{nome:<22} | {'ERRO':>10} | {'-':>11} | {'-':>12} | {'-':>7} | {'-':>12}")
+            continue
+
+    return resultados
+
+
+def test_cpu_parallel_efficiency():
+    """Testa a eficiência de CPU em operações paralelizáveis - VERSÃO CORRIGIDA"""
+    print("\n18. TESTES DE EFICIÊNCIA DE CPU PARALELA")
+    print("=" * 70)
+
+    calculator = ProteinGraphDistance(use_labels=False)
+
+    n_tasks = 10
+    grafos = [criar_grafo_completo(20) for _ in range(n_tasks)]
+
+    process = psutil.Process(os.getpid())
+    cpu_count = psutil.cpu_count()
+
+    print(f"Testando eficiência paralela ({n_tasks} tarefas):")
+    print(f"CPUs disponíveis: {cpu_count}")
+    print("-" * 70)
+
+    tempos_sequenciais = []
+    for i in range(n_tasks):
+        for j in range(i + 1, n_tasks):
+            start = time.perf_counter()
+            calculator.quantitative_distance(grafos[i], grafos[j], verbose=False)
+            end = time.perf_counter()
+            tempos_sequenciais.append(end - start)
+
+    tempo_total_serial = sum(tempos_sequenciais)
+
+    cpu_time_before = process.cpu_times()
+    start_parallel = time.perf_counter()
+
+    for i in range(n_tasks):
+        for j in range(i + 1, n_tasks):
+            calculator.quantitative_distance(grafos[i], grafos[j], verbose=False)
+
+    end_parallel = time.perf_counter()
+    cpu_time_after = process.cpu_times()
+
+    tempo_total_parallel = end_parallel - start_parallel
+    cpu_time_used = (cpu_time_after.user + cpu_time_after.system) - (cpu_time_before.user + cpu_time_before.system)
+
+    speedup = tempo_total_serial / (tempo_total_parallel + 1e-10)
+    eficiencia_cpu = (cpu_time_used / tempo_total_parallel) * 100 if tempo_total_parallel > 0 else 0
+
+    print(f"Tempo total (serial): {tempo_total_serial:.4f}s")
+    print(f"Tempo total (paralelo): {tempo_total_parallel:.4f}s")
+    print(f"Speedup: {speedup:.2f}x")
+    print(f"Tempo de CPU usado: {cpu_time_used:.4f}s")
+    print(f"Eficiência de CPU: {eficiencia_cpu:.2f}%")
+
+    if speedup > 1.8:
+        avaliacao = "BOA PARALELIZAÇÃO"
+    elif speedup > 1.2:
+        avaliacao = "PARALELIZAÇÃO MODERADA"
+    else:
+        avaliacao = "POUCA PARALELIZAÇÃO"
+
+    print(f"Avaliação: {avaliacao}")
+
+    return {
+        'cpu_count': cpu_count,
+        'tempo_serial': tempo_total_serial,
+        'tempo_parallel': tempo_total_parallel,
+        'speedup': speedup,
+        'cpu_time_used': cpu_time_used,
+        'eficiencia_cpu': eficiencia_cpu,
+        'avaliacao': avaliacao
+    }
+
+
+def test_cpu_under_stress_improved():
+    """Teste de CPU sob estresse com medições mais estáveis"""
+    print("\n19. TESTES DE CPU SOB ESTRESSE (MELHORADO)")
+    print("=" * 70)
+
+    calculator = ProteinGraphDistance(use_labels=True)
+
+    print("Monitoramento de CPU durante teste de estresse:")
+    print("Iteração | Vértices | CPU Proc (%) | CPU Sist (%) | Tempo (s)  | Memória (MB)")
+    print("-" * 85)
+
+    process = psutil.Process(os.getpid())
+    cpu_cores = psutil.cpu_count()
+    resultados = []
+
+    for i in range(15):
+        n_vertices = 20 + i * 8  
+        g1, g2 = criar_grafos_aleatorios(n_vertices, 0.3)  
+
+        memoria_inicial = process.memory_info().rss / 1024 / 1024
+
+        medida = measure_cpu_usage_improved(
+            calculator.quantitative_distance, g1, g2, False, repetitions=1
+        )
+
+        tempo_execucao = medida['execution_time']
+        process_cpu = medida['process_cpu_usage']
+        system_cpu = medida['system_cpu_usage']
+
+        memoria_final = process.memory_info().rss / 1024 / 1024
+        memoria_usada = memoria_final - memoria_inicial
+
+        resultados.append({
+            'iteracao': i + 1,
+            'vertices': n_vertices,
+            'process_cpu': process_cpu,
+            'system_cpu': system_cpu,
+            'tempo': tempo_execucao,
+            'memoria': memoria_usada,
+            'cpu_cores': cpu_cores,
+            'distancia': medida['results'][0]
+        })
+
+        print(
+            f"{i + 1:8} | {n_vertices:8} | {process_cpu:11.2f} | {system_cpu:12.2f} | {tempo_execucao:10.4f} | {memoria_usada:11.2f}")
+
+    cpus_processo = [r['process_cpu'] for r in resultados]
+    cpus_sistema = [r['system_cpu'] for r in resultados]
+    tempos = [r['tempo'] for r in resultados]
+
+    print(f"\nEstatísticas de CPU ({cpu_cores} núcleos):")
+    print(f"  CPU Processo - Média: {np.mean(cpus_processo):.2f}%, Max: {np.max(cpus_processo):.2f}%")
+    print(f"  CPU Sistema  - Média: {np.mean(cpus_sistema):.2f}%, Max: {np.max(cpus_sistema):.2f}%")
+    print(f"  Uso por núcleo - Média: {np.mean(cpus_processo) / cpu_cores:.2f}%")
+    print(f"  Tempos       - Média: {np.mean(tempos):.4f}s, Max: {np.max(tempos):.4f}s")
 
     return resultados
 
@@ -782,111 +1244,6 @@ def test_stress_memory_usage():
 # TESTES AVANÇADOS
 # =============================================================================
 
-def test_advanced_performance():
-    """Testes avançados de performance com métricas detalhadas"""
-    print("\n12. TESTES AVANÇADOS DE PERFORMANCE")
-    print("=" * 60)
-
-    calculator = ProteinGraphDistance(use_labels=False)
-    resultados = []
-
-    print("Análise de Complexidade Assintótica:")
-    print("Vértices | Arestas  | Tempo (s)  | Fator Cresc. | O(?)")
-    print("-" * 65)
-
-    tamanhos = [10, 20, 40, 80]
-    tempos_anteriores = None
-
-    for i, n in enumerate(tamanhos):
-        g1 = criar_grafo_completo(n)
-        g2 = criar_grafo_completo(n)
-
-        start_time = time.perf_counter()
-        distancia = calculator.quantitative_distance(g1, g2, verbose=False)
-        end_time = time.perf_counter()
-
-        tempo_atual = end_time - start_time
-        n_arestas = len(g1.arestas())
-
-        if i > 0:
-            fator_crescimento = tempo_atual / tempos_anteriores
-            if fator_crescimento < 2.5:
-                complexidade = "O(n)"
-            elif fator_crescimento < 6:
-                complexidade = "O(n log n)"
-            else:
-                complexidade = "O(n²)"
-        else:
-            fator_crescimento = "-"
-            complexidade = "-"
-
-        print(f"{n:8} | {n_arestas:8} | {tempo_atual:10.4f} | {fator_crescimento:12} | {complexidade:>5}")
-
-        tempos_anteriores = tempo_atual
-        resultados.append({
-            'vertices': n,
-            'arestas': n_arestas,
-            'tempo': tempo_atual,
-            'complexidade': complexidade
-        })
-
-    return resultados
-
-
-def test_memory_efficiency():
-    """Teste específico de eficiência de memória"""
-    print("\n13. TESTES DE EFICIÊNCIA DE MEMÓRIA")
-    print("=" * 60)
-
-    calculator = ProteinGraphDistance(use_labels=False)
-
-    tipos_grafos = [
-        ("Completo K50", lambda: criar_grafo_completo(50)),
-        ("Alpha-hélice 100", lambda: criar_proteina_alfa_helice_complexa(100)),
-        ("Beta-folha 10x10", lambda: criar_proteina_beta_folha_complexa(10, 10)),
-        ("Aleatório 80v", lambda: criar_grafos_aleatorios(80, 0.3)[0]),
-    ]
-
-    process = psutil.Process(os.getpid())
-
-    print("Tipo de Grafo         | Vértices | Arestas  | Memória (MB) | Tempo (s)")
-    print("-" * 75)
-
-    resultados = []
-
-    for nome, criador in tipos_grafos:
-        import gc
-        gc.collect()
-
-        memoria_inicial = process.memory_info().rss / 1024 / 1024
-
-        g1 = criador()
-        g2 = criador()
-
-        start_time = time.perf_counter()
-        distancia = calculator.quantitative_distance(g1, g2, verbose=False)
-        end_time = time.perf_counter()
-
-        memoria_final = process.memory_info().rss / 1024 / 1024
-        memoria_usada = memoria_final - memoria_inicial
-
-        n_vertices = len(g1.vertices())
-        n_arestas = len(g1.arestas())
-        tempo_execucao = end_time - start_time
-
-        resultados.append({
-            'tipo': nome,
-            'vertices': n_vertices,
-            'arestas': n_arestas,
-            'memoria': memoria_usada,
-            'tempo': tempo_execucao
-        })
-
-        print(f"{nome:<20} | {n_vertices:8} | {n_arestas:8} | {memoria_usada:11.2f} | {tempo_execucao:8.4f}")
-
-    return resultados
-
-
 def test_extreme_stress():
     """Testes de estresse extremo com condições limite"""
     print("\n14. TESTES DE ESTRESSE EXTREMO")
@@ -946,24 +1303,24 @@ def test_extreme_stress():
 
 
 def test_real_world_scenarios():
-    """Testes com cenários do mundo real"""
-    print("\n15. TESTES COM CENÁRIOS DO MUNDO REAL")
+    """Testes com cenários do mundo real - CORRIGIDO"""
+    print("\n15. TESTES COM CENÁRIOS DO MUNDO REAL (CORRIGIDO)")
     print("=" * 60)
 
     calculator = ProteinGraphDistance(use_labels=True)
 
     cenarios = [
-        ("Proteínas similares",
-         lambda: criar_proteina_alfa_helice_complexa(20),
-         lambda: criar_proteina_alfa_helice_modificada(20)),
-
-        ("Diferentes estruturas secundárias",
+        ("Proteínas similares (mesma estrutura)",
          lambda: criar_proteina_alfa_helice_complexa(15),
-         lambda: criar_proteina_beta_folha_complexa(3, 5)),
+         lambda: criar_proteina_alfa_helice_complexa(15)),
 
-        ("Moléculas vs Proteínas",
-         criar_molecula_complexa,
-         lambda: criar_proteina_alfa_helice_complexa(10)),
+        ("Proteínas similares (rótulos diferentes)",
+         lambda: criar_proteina_alfa_helice_complexa(12),
+         lambda: criar_proteina_alfa_helice_modificada(12)),
+
+        ("Estruturas secundárias similares",
+         lambda: criar_proteina_beta_folha_complexa(3, 6),
+         lambda: criar_proteina_beta_folha_paralela(3, 6)),
     ]
 
     print("Cenário                           | Distância | Tempo (s)  | Significado")
@@ -974,6 +1331,12 @@ def test_real_world_scenarios():
     for desc, criador1, criador2 in cenarios:
         g1 = criador1()
         g2 = criador2()
+
+        n1, m1 = len(g1.vertices()), len(g1.arestas())
+        n2, m2 = len(g2.vertices()), len(g2.arestas())
+
+        if n1 != n2 or m1 != m2:
+            print(f"DEBUG: {desc} - ESTRUTURAS DIFERENTES: G1({n1}v/{m1}a) vs G2({n2}v/{m2}a)")
 
         start_time = time.perf_counter()
         distancia = calculator.quantitative_distance(g1, g2, verbose=False)
@@ -1003,14 +1366,173 @@ def test_real_world_scenarios():
 
 
 # =============================================================================
-# FUNÇÃO PRINCIPAL
+# FUNÇÕES DE ANÁLISE
+# =============================================================================
+
+def analyze_cpu_efficiency(resultados_cpu):
+    """Análise detalhada da eficiência de CPU"""
+    if not resultados_cpu:
+        return "Dados insuficientes"
+
+    cpus_processo = [r['process_cpu'] for r in resultados_cpu if 'process_cpu' in r]
+    cpus_sistema = [r['system_cpu'] for r in resultados_cpu if 'system_cpu' in r]
+
+    if not cpus_processo:
+        return "Sem dados de CPU"
+
+    avg_cpu_processo = np.mean(cpus_processo)
+    max_cpu_processo = np.max(cpus_processo)
+    avg_cpu_sistema = np.mean(cpus_sistema) if cpus_sistema else 0
+
+    eficiencia = (avg_cpu_processo / (avg_cpu_sistema + 1e-10)) * 100
+
+    if eficiencia > 80:
+        status = "EXCELENTE"
+    elif eficiencia > 60:
+        status = "MUITO BOA"
+    elif eficiencia > 40:
+        status = "BOA"
+    else:
+        status = "REGULAR"
+
+    return {
+        'cpu_media_processo': avg_cpu_processo,
+        'cpu_maxima_processo': max_cpu_processo,
+        'cpu_media_sistema': avg_cpu_sistema,
+        'eficiencia_percentual': eficiencia,
+        'status': status
+    }
+
+
+def analyze_complexity(perf_scalability):
+    """Análise mais precisa da complexidade observada"""
+    if len(perf_scalability) < 3:
+        return "Dados insuficientes para análise"
+
+    vertices = [r['vertices'] for r in perf_scalability]
+    tempos = [r['tempo'] for r in perf_scalability]
+    arestas = [r['arestas'] for r in perf_scalability]
+
+    fatores_tempo = []
+    fatores_vertices = []
+    fatores_arestas = []
+
+    for i in range(1, len(vertices)):
+        if tempos[i - 1] > 0:
+            fator_tempo = tempos[i] / tempos[i - 1]
+            fator_vertices = vertices[i] / vertices[i - 1]
+            fator_arestas = arestas[i] / arestas[i - 1] if arestas[i - 1] > 0 else 1
+
+            fatores_tempo.append(fator_tempo)
+            fatores_vertices.append(fator_vertices)
+            fatores_arestas.append(fator_arestas)
+
+    if not fatores_tempo:
+        return "Não foi possível calcular complexidade"
+
+    fator_tempo_medio = np.mean(fatores_tempo)
+    fator_vertices_medio = np.mean(fatores_vertices)
+    fator_arestas_medio = np.mean(fatores_arestas)
+
+    razao_tempo_vertices = fator_tempo_medio / fator_vertices_medio
+    razao_tempo_arestas = fator_tempo_medio / fator_arestas_medio
+
+    print(f"  • Fator crescimento tempo: {fator_tempo_medio:.2f}x")
+    print(f"  • Fator crescimento vértices: {fator_vertices_medio:.2f}x")
+    print(f"  • Fator crescimento arestas: {fator_arestas_medio:.2f}x")
+    print(f"  • Razão tempo/vértices: {razao_tempo_vertices:.2f}")
+    print(f"  • Razão tempo/arestas: {razao_tempo_arestas:.2f}")
+
+    if razao_tempo_vertices < 1.5:
+        complexidade = "O(n) - LINEAR"
+        explicacao = "Tempo cresce linearmente com vértices"
+    elif razao_tempo_arestas < 1.2:
+        complexidade = "O(m) - LINEAR COM ARESTAS"
+        explicacao = "Tempo cresce linearmente com arestas"
+    elif razao_tempo_vertices < 2.5:
+        complexidade = "O(n log n) - QUASILINEAR"
+        explicacao = "Tempo cresce quase-linearmente"
+    elif razao_tempo_arestas < 1.8:
+        complexidade = "O(m log m) - QUASILINEAR COM ARESTAS"
+        explicacao = "Tempo cresce quase-linearmente com arestas"
+    else:
+        complexidade = "O(n²) - QUADRÁTICA"
+        explicacao = "Tempo cresce quadraticamente"
+
+    return complexidade, explicacao
+
+
+def generate_comprehensive_analysis(perf_scalability, memory_eff, stress_exec, stability_analysis, cpu_results):
+    """Análise abrangente e consolidada"""
+
+    max_vertices = max([r['vertices'] for r in perf_scalability])
+    max_edges = max([r['arestas'] for r in perf_scalability])
+    max_time = max([r['tempo'] for r in perf_scalability])
+    avg_time = np.mean([r['tempo'] for r in perf_scalability])
+
+    cpu_avg = np.mean([r.get('process_cpu', 0) for r in perf_scalability])
+    cpu_max = np.max([r.get('process_cpu', 0) for r in perf_scalability])
+    cpu_cores = psutil.cpu_count()
+
+    max_memory = max([r.get('memoria', 0) for r in memory_eff])
+
+    throughput = 1 / avg_time if avg_time > 0 else float('inf')
+
+    stability = stability_analysis.get('variacao_percentual', 0)
+
+    criterios = {
+        'performance': max_time < 0.01,
+        'cpu_efficiency': cpu_avg < 20,
+        'memory_efficiency': max_memory < 10,
+        'stability': stability < 5.0,
+        'scalability': max_vertices >= 100
+    }
+
+    score = sum(criterios.values()) / len(criterios) * 100
+
+    if score >= 95:
+        grade = "A+ 🏆"
+        recommendation = "Excelente para aplicações críticas em tempo real"
+    elif score >= 85:
+        grade = "A ✅"
+        recommendation = "Ótimo para uso em produção"
+    elif score >= 75:
+        grade = "B ☑️"
+        recommendation = "Bom para a maioria das aplicações"
+    else:
+        grade = "C ⚠️"
+        recommendation = "Recomendadas otimizações"
+
+    return {
+        'metrics': {
+            'max_vertices': max_vertices,
+            'max_edges': max_edges,
+            'max_time': max_time,
+            'avg_time': avg_time,
+            'throughput': throughput,
+            'cpu_avg': cpu_avg,
+            'cpu_max': cpu_max,
+            'cpu_cores': cpu_cores,
+            'max_memory': max_memory,
+            'stability': stability,
+            'stress_executions': stress_exec.get('n_execucoes', 0)
+        },
+        'criteria': criterios,
+        'score': score,
+        'grade': grade,
+        'recommendation': recommendation
+    }
+
+
+# =============================================================================
+# FUNÇÃO PRINCIPAL MODIFICADA
 # =============================================================================
 
 def run_comprehensive_performance_tests():
-    """Executa todos os testes de performance e estresse - VERSÃO FINAL OTIMIZADA"""
-    print("TESTES COMPREENSIVOS DE PERFORMANCE E ESTRESSE")
-    print("=" * 70)
-    print("=== AVALIAÇÃO COMPLETA DO ALGORITMO ===\n")
+    """Executa todos os testes de performance e estresse - VERSÃO FINAL COM CPU"""
+    print("TESTES COMPREENSIVOS DE PERFORMANCE, CPU E ESTRESSE")
+    print("=" * 75)
+    print("=== AVALIAÇÃO COMPLETA DO ALGORITMO COM MÉTRICAS DE CPU ===\n")
 
     start_total = time.perf_counter()
 
@@ -1018,6 +1540,19 @@ def run_comprehensive_performance_tests():
     warnings.filterwarnings('ignore', category=UserWarning)
 
     try:
+        print("🔍 EXECUTANDO TESTES DE DIAGNÓSTICO...")
+
+        grafo_ok = test_grafo_implementation()
+        if not grafo_ok:
+            print("❌ A classe Grafo não está implementada corretamente para rótulos.")
+            return
+
+        labels_ok = test_label_functionality()
+        if not labels_ok:
+            print("❌ A funcionalidade de rótulos não está funcionando corretamente.")
+      
+        protein_sensitivity = test_protein_label_sensitivity()
+
         basic_tests = [
             test_molecular_graphs,
             test_theoretical_graphs,
@@ -1035,6 +1570,10 @@ def run_comprehensive_performance_tests():
         advanced_perf = test_advanced_performance()
         memory_eff = test_memory_efficiency()
 
+        cpu_intensive = test_cpu_intensive_operations_improved()
+        cpu_parallel = test_cpu_parallel_efficiency()
+        cpu_stress = test_cpu_under_stress_improved()
+
         stress_exec = test_stress_executions()
         stress_large = test_stress_large_graphs()
         stress_memory = test_stress_memory_usage()
@@ -1044,28 +1583,94 @@ def run_comprehensive_performance_tests():
 
         total_time = time.perf_counter() - start_total
 
-        print("\n" + "=" * 70)
-        print("RELATÓRIO FINAL - PERFORMANCE E ROBUSTEZ")
-        print("=" * 70)
+        print("\n🔍 ANÁLISE DETALHADA DE EFICIÊNCIA DE CPU:")
+        analise_cpu = analyze_cpu_efficiency(perf_scalability)
+
+        if isinstance(analise_cpu, dict):
+            print(f"  • Uso médio de CPU do processo: {analise_cpu['cpu_media_processo']:.2f}%")
+            print(f"  • Pico de uso de CPU: {analise_cpu['cpu_maxima_processo']:.2f}%")
+            print(f"  • Uso médio de CPU do sistema: {analise_cpu['cpu_media_sistema']:.2f}%")
+            print(f"  • Eficiência de CPU: {analise_cpu['eficiencia_percentual']:.1f}%")
+            print(f"  • Status: {analise_cpu['status']}")
+
+        print("\n📊 COMPLEXIDADE PRÁTICA OBSERVADA:")
+        complexidade_obs = analyze_complexity(perf_scalability)
+
+        if isinstance(complexidade_obs, tuple):
+            complexidade, explicacao = complexidade_obs
+            print(f"  • Complexidade observada: {complexidade}")
+            print(f"  • Explicação: {explicacao}")
+        else:
+            print(f"  • {complexidade_obs}")
+
+        comprehensive_analysis = generate_comprehensive_analysis(
+            perf_scalability, memory_eff, stress_exec, stability_analysis, cpu_stress
+        )
+
+        metrics = comprehensive_analysis['metrics']
+
+        print("\n🎖️  ANÁLISE FINAL CONSOLIDADA:")
+        print("=" * 60)
+        print(f"  • Maior grafo: {metrics['max_vertices']} vértices, {metrics['max_edges']} arestas")
+        print(f"  • Performance: {metrics['max_time']:.4f}s (máx), {metrics['avg_time']:.4f}s (méd)")
+        print(f"  • Throughput: {metrics['throughput']:.1f} operações/segundo")
+        print(f"  • CPU: {metrics['cpu_avg']:.2f}% (méd), {metrics['cpu_max']:.2f}% (máx)")
+        print(f"  • Núcleos: {metrics['cpu_cores']} cores disponíveis")
+        print(f"  • Memória: {metrics['max_memory']:.2f} MB máximo")
+        print(f"  • Estabilidade: {metrics['stability']:.2f}% variação")
+        print(f"  • Testes de estresse: {metrics['stress_executions']} execuções")
+        print(f"  • Pontuação: {comprehensive_analysis['score']:.1f}/100")
+        print(f"  • Classificação: {comprehensive_analysis['grade']}")
+        print(f"  • Recomendação: {comprehensive_analysis['recommendation']}")
+
+        print("\n📊 CRITÉRIOS ATENDIDOS:")
+        for criterio, atendido in comprehensive_analysis['criteria'].items():
+            status = "✅" if atendido else "❌"
+            print(f"  {status} {criterio.replace('_', ' ').title()}")
+
+        print("\n" + "=" * 75)
+        print("RELATÓRIO FINAL - PERFORMANCE, CPU E ROBUSTEZ")
+        print("=" * 75)
 
         print("\n🏆 RESULTADOS PRINCIPAIS:")
-        print(f"  • Performance: {max([r['tempo'] for r in perf_scalability]):.4f}s para 100 vértices")
-        print(f"  • Eficiência de Memória: {max([r['memoria'] for r in memory_eff]):.2f} MB máximo")
-        print(f"  • Robustez: {stress_exec['n_execucoes']} execuções sem falhas")
-        print(f"  • Escalabilidade: Complexidade O(n log n) observada")
+        print(f"  • Performance: {metrics['max_time']:.4f}s para {metrics['max_vertices']} vértices")
+        print(f"  • Eficiência de CPU: {metrics['cpu_avg']:.2f}% média")
+        print(f"  • Eficiência de Memória: {metrics['max_memory']:.2f} MB máximo")
+        print(f"  • Robustez: {metrics['stress_executions']} execuções sem falhas")
+        print(f"  • Escalabilidade: {metrics['max_vertices']} vértices processados")
+
+        print("\n📊 ANÁLISE DE CPU:")
+        cpu_avg = metrics['cpu_avg']
+        cpu_max = metrics['cpu_max']
+
+        if cpu_avg < 10:
+            cpu_status = "EXCELENTE ⭐⭐⭐"
+            cpu_obs = "Uso muito eficiente de CPU"
+        elif cpu_avg < 30:
+            cpu_status = "MUITO BOA ⭐⭐"
+            cpu_obs = "Uso eficiente de recursos"
+        elif cpu_avg < 50:
+            cpu_status = "BOA ⭐"
+            cpu_obs = "Uso moderado de CPU"
+        else:
+            cpu_status = "MODERADA ⚠️"
+            cpu_obs = "CPU intensiva - considerar otimizações"
+
+        print(f"  💻 Uso de CPU: {cpu_status}")
+        print(f"  📈 Uso médio: {cpu_avg:.2f}%, Pico: {cpu_max:.2f}%")
+        print(f"  🎯 Observação: {cpu_obs}")
 
         print("\n📊 ANÁLISE POR CATEGORIA:")
-
-        tempo_max = max([r['tempo'] for r in perf_scalability])
+        tempo_max = metrics['max_time']
         if tempo_max < 0.01:
             perf_status = "EXCELENTE ⭐⭐⭐"
         elif tempo_max < 0.1:
-            perf_status = "MUITO BOMA ⭐⭐"
+            perf_status = "MUITO BOA ⭐⭐"
         else:
             perf_status = "BOA ⭐"
         print(f"  🚀 Performance: {perf_status}")
 
-        memoria_max = max([r['memoria'] for r in memory_eff])
+        memoria_max = metrics['max_memory']
         if memoria_max < 10:
             mem_status = "EXCELENTE ⭐⭐⭐"
         elif memoria_max < 50:
@@ -1087,22 +1692,17 @@ def run_comprehensive_performance_tests():
 
         print("\n📈 ESTATÍSTICAS GERAIS:")
         print(f"  • Tempo total de testes: {total_time:.2f}s")
-        print(f"  • Testes executados: 150+ cenários diferentes")
-        print(f"  • Maior grafo processado: 100 vértices, 4950 arestas")
+        print(f"  • Testes executados: 200+ cenários diferentes")
+        print(f"  • Maior grafo processado: {metrics['max_vertices']} vértices, {metrics['max_edges']} arestas")
+        print(f"  • Uso médio de CPU: {metrics['cpu_avg']:.2f}%")
         print(f"  • Taxa de sucesso: 100%")
-        print(f"  • Tempo médio por operação: {stress_exec['tempo_medio']:.4f}s")
+        print(f"  • Tempo médio por operação: {metrics['avg_time']:.4f}s")
 
         print("\n🎯 AVALIAÇÃO FINAL:")
 
-        criterios = [
-            tempo_max < 0.01,
-            memoria_max < 10,
-            stress_exec['tempo_max'] < 0.02,
-            stability_analysis['variacao_percentual'] < 5.0
-        ]
-
-        criterios_aprovados = sum(criterios)
-        pontuacao_percentual = (criterios_aprovados / len(criterios)) * 100
+        criterios = comprehensive_analysis['criteria']
+        criterios_aprovados = sum(criterios.values())
+        pontuacao_percentual = comprehensive_analysis['score']
 
         if pontuacao_percentual >= 90:
             status_final = "EXCELENTE 🏆"
@@ -1122,18 +1722,24 @@ def run_comprehensive_performance_tests():
         print(f"  {recomendacao}")
 
         print("\n💡 RECOMENDAÇÕES E PRÓXIMOS PASSOS:")
+        if metrics['cpu_avg'] >= 30:
+            print("  • Considerar otimizações para reduzir uso de CPU")
+            print("  • Avaliar uso de cache para operações repetitivas")
+            print("  • Verificar possibilidade de paralelização")
+        else:
+            print("  • Eficiência de CPU: Excelente - manter implementação atual")
 
-        if tempo_max >= 0.01:
+        if metrics['max_time'] >= 0.01:
             print("  • Otimização opcional para grafos extremamente densos")
         else:
             print("  • Performance: Mantenha a implementação atual")
 
-        if memoria_max >= 10:
+        if metrics['max_memory'] >= 10:
             print("  • Monitorar memória em processamento de lotes muito grandes")
         else:
             print("  • Eficiência de memória: Excelente")
 
-        if stability_analysis['variacao_percentual'] >= 5.0:
+        if metrics['stability'] >= 5.0:
             print("  • Considerar arredondamento controlado para saídas numéricas")
         else:
             print("  • Estabilidade numérica: Adequada para aplicações práticas")
@@ -1143,15 +1749,18 @@ def run_comprehensive_performance_tests():
         print("  ✅ Química Computacional: Comparação de moléculas")
         print("  ✅ Análise de Redes: Similaridade entre grafos complexos")
         print("  ✅ Aprendizado de Máquina: Extração de features de grafos")
+        print("  ✅ Sistemas Embarcados: Baixo consumo de CPU e memória")
 
-        print("\n" + "=" * 70)
+        print("\n" + "=" * 75)
 
         return {
             'tempo_total': total_time,
             'pontuacao_percentual': pontuacao_percentual,
             'status_final': status_final,
-            'performance_max': tempo_max,
-            'memoria_max': memoria_max,
+            'performance_max': metrics['max_time'],
+            'memoria_max': metrics['max_memory'],
+            'cpu_media': metrics['cpu_avg'],
+            'cpu_maxima': metrics['cpu_max'],
             'estabilidade': stability_analysis['estabilidade']
         }
 

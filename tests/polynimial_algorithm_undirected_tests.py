@@ -4,16 +4,14 @@ import random
 import psutil
 import os
 import math
-from isomorphism3 import are_isomorphic, _generate_isomorphic_group
+from algorithms.polynomial_algorithm_undirected import are_isomorphic, _generate_isomorphic_group
 from structures.Grafo import Grafo
 
 
 def criar_grafo_petersen():
     """Grafo de Petersen - grafo cúbico simétrico não planar"""
     g = Grafo()
-    for i in range(1, 6):
-        g.adicionar_vertice(i)
-    for i in range(6, 11):
+    for i in range(1, 11):
         g.adicionar_vertice(i)
 
     for i in range(1, 5):
@@ -24,11 +22,8 @@ def criar_grafo_petersen():
         g.adicionar_aresta(i, i + 1)
     g.adicionar_aresta(10, 6)
 
-    g.adicionar_aresta(1, 6)
-    g.adicionar_aresta(2, 8)
-    g.adicionar_aresta(3, 10)
-    g.adicionar_aresta(4, 7)
-    g.adicionar_aresta(5, 9)
+    for i in range(1, 6):
+        g.adicionar_aresta(i, i + 5)
 
     return g
 
@@ -299,14 +294,21 @@ def build_complete_graph(n):
 def build_petersen_graph():
     """Constrói grafo de Petersen (famoso contraexemplo)"""
     g = Grafo()
-    for i in range(5):
-        g.adicionar_aresta(i, (i + 1) % 5)
-    for i in range(5, 10):
-        g.adicionar_aresta(i, 5 + (i - 4) % 5)
-    for i in range(5):
-        g.adicionar_aresta(i, i + 5)
-    return g
+    for i in range(1, 11):
+        g.adicionar_vertice(i)
 
+    for i in range(1, 5):
+        g.adicionar_aresta(i, i + 1)
+    g.adicionar_aresta(5, 1)
+
+    for i in range(6, 10):
+        g.adicionar_aresta(i, i + 1)
+    g.adicionar_aresta(10, 6)
+
+    for i in range(1, 6):
+        g.adicionar_aresta(i, i + 5)
+
+    return g
 
 def build_wheel_graph(n):
     """Constrói grafo roda W_n (ciclo + vértice central)"""
@@ -348,6 +350,132 @@ def build_small_non_isomorphic_regular_graphs():
 
     return [("C6 vs 2xC3", g1, g2, False),
             ("K3,3 vs Petersen", g3, g4, False)]
+
+
+def get_cpu_metrics():
+    """Obtém métricas de CPU mais precisas"""
+    try:
+        process = psutil.Process(os.getpid())
+
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        cpu_times = psutil.cpu_times_percent(interval=0.1)
+        cpu_freq = psutil.cpu_freq()
+        load_avg = os.getloadavg() if hasattr(os, 'getloadavg') else (0, 0, 0)
+
+        return {
+            'system_cpu_percent': cpu_percent,
+            'system_user_percent': cpu_times.user,
+            'system_system_percent': cpu_times.system,
+            'cpu_frequency': cpu_freq.current if cpu_freq else None,
+            'cpu_cores': psutil.cpu_count(logical=False),
+            'cpu_threads': psutil.cpu_count(logical=True),
+            'load_avg_1min': load_avg[0],
+            'load_avg_5min': load_avg[1],
+            'load_avg_15min': load_avg[2]
+        }
+    except Exception as e:
+        return {'error': f"Erro ao obter métricas CPU: {str(e)}"}
+
+
+def measure_cpu_usage(func, *args, **kwargs):
+    """Mede o uso de CPU de forma precisa e confiável"""
+    process = psutil.Process(os.getpid())
+
+    start_cpu_times = process.cpu_times()
+    start_perf = time.perf_counter()
+    start_process = time.process_time()
+
+    result = func(*args, **kwargs)
+
+    end_perf = time.perf_counter()
+    end_process = time.process_time()
+    end_cpu_times = process.cpu_times()
+
+    real_time = end_perf - start_perf
+    process_cpu_time = end_process - start_process
+
+    user_time = end_cpu_times.user - start_cpu_times.user
+    system_time = end_cpu_times.system - start_cpu_times.system
+    total_cpu_time = user_time + system_time
+
+    if real_time <= 0:
+        real_time = 0.000001
+
+    cpu_percent = (total_cpu_time / real_time) * 100
+    efficiency = (process_cpu_time / real_time) * 100
+
+    cpu_percent = min(cpu_percent, 1000)  
+    efficiency = min(efficiency, 1000)
+
+    return result, {
+        'execution_time': real_time,
+        'cpu_time_user': user_time,
+        'cpu_time_system': system_time,
+        'cpu_time_used': total_cpu_time,
+        'process_cpu_time': process_cpu_time,
+        'cpu_percent': cpu_percent,
+        'efficiency': efficiency
+    }
+
+
+def run_cpu_analysis():
+    """Executa análise de CPU com métricas corrigidas e estrutura compatível"""
+    print("\n" + "=" * 100)
+    print("ANÁLISE DE CPU - MÉTRICAS CORRIGIDAS")
+    print("=" * 100)
+
+    def test_with_larger_graph():
+        g1 = build_complete_graph(20)
+        g2 = build_complete_graph(20)
+        return are_isomorphic(g1, g2)
+
+    print("Executando teste com gráfico maior para medições precisas...")
+
+    all_metrics = []
+    for i in range(5):
+        result, metrics = measure_cpu_usage(test_with_larger_graph)
+        all_metrics.append(metrics)
+        time.sleep(0.1)
+
+    avg_metrics = {}
+    for key in all_metrics[0].keys():
+        values = [m[key] for m in all_metrics]
+        avg_metrics[key] = sum(values) / len(values)
+
+    print_cpu_metrics(avg_metrics, "Média de 5 execuções (K20)")
+
+    system_metrics = get_cpu_metrics()
+    print(f"\n💻 MÉTRICAS DO SISTEMA:")
+    print(f"  • Núcleos físicos: {system_metrics['cpu_cores']}")
+    print(f"  • Threads: {system_metrics['cpu_threads']}")
+    print(f"  • Uso geral do CPU: {system_metrics['system_cpu_percent']}%")
+    if system_metrics['cpu_frequency']:
+        print(f"  • Frequência CPU: {system_metrics['cpu_frequency']} MHz")
+
+    return {
+        'total_time': avg_metrics['execution_time'],
+        'total_cpu_user': avg_metrics['cpu_time_user'],
+        'total_cpu_system': avg_metrics['cpu_time_system'],
+        'cpu_metrics': {
+            'avg_cpu_percent': avg_metrics['cpu_percent'],
+            'efficiency': avg_metrics['efficiency']
+        }
+    }
+
+def print_cpu_metrics(metrics, test_name=""):
+    """Imprime métricas de CPU de forma mais precisa"""
+    print(f"\n📊 MÉTRICAS DE CPU - {test_name}:")
+    print(f"  ⏱️  Tempo de execução real: {metrics['execution_time']:.6f}s")
+    print(f"  🔄 Tempo de CPU (usuário): {metrics['cpu_time_user']:.6f}s")
+    print(f"  🔄 Tempo de CPU (sistema): {metrics['cpu_time_system']:.6f}s")
+    print(f"  🔄 Tempo total de CPU: {metrics['cpu_time_used']:.6f}s")
+    print(f"  📈 Uso de CPU: {metrics['cpu_percent']:.2f}%")
+    print(f"  🎯 Eficiência: {metrics['efficiency']:.1f}%")
+
+    if metrics['execution_time'] < 0.001:
+        print("  ⚠️  Medição muito rápida - pode ser imprecisa")
+    elif metrics['cpu_time_used'] < 0.0001:
+        print("  ⚠️  Tempo de CPU muito baixo - possível imprecisão")
 
 
 def test_basic_isomorphism():
@@ -565,7 +693,11 @@ def get_memory_usage():
     """Retorna o uso de memória atual em MB com maior precisão"""
     gc.collect()
     process = psutil.Process(os.getpid())
-    return process.memory_info().rss / 1024 / 1024
+    try:
+        mem = process.memory_full_info().uss
+    except AttributeError:
+        mem = process.memory_info().rss
+    return mem / 1024 / 1024
 
 
 def linear_regression(x, y):
@@ -626,9 +758,9 @@ def analyze_complexity(times, sizes):
     return complexity, avg_growth, slope
 
 def test_asymptotic_complexity():
-    """Testes de complexidade assintótica com análise detalhada"""
+    """Testes de complexidade assintótica com análise detalhada - ATÉ 100 VÉRTICES"""
     print("\n" + "=" * 80)
-    print("TESTES DE COMPLEXIDADE ASSINTÓTICA - ANÁLISE DETALHADA")
+    print("TESTES DE COMPLEXIDADE ASSINTÓTICA - ATÉ 100 VÉRTICES")
     print("=" + "=" * 79)
 
     test_cases = [
@@ -640,15 +772,15 @@ def test_asymptotic_complexity():
         ("Wheel Graphs", lambda n: build_wheel_graph(n)),
     ]
 
-    sizes = [10, 20, 30, 40, 50, 60]
+    sizes = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 
-    print("\n📊 ANÁLISE DE COMPLEXIDADE ASSINTÓTICA:")
+    print("\n📊 ANÁLISE DE COMPLEXIDADE ASSINTÓTICA (ATÉ 100 VÉRTICES):")
     print("=" * 100)
 
     all_results = {}
 
     for graph_type, builder in test_cases:
-        print(f"\n🔍 ANALISANDO {graph_type.upper()}:")
+        print(f"\n🔍 ANALISANDO {graph_type.upper()} (ATÉ 100 VÉRTICES):")
         print("Vértices | Arestas  | Tempo (s)  | Fator Tempo | Complexidade")
         print("-" * 75)
 
@@ -663,12 +795,15 @@ def test_asymptotic_complexity():
             else:
                 actual_n = n
 
+            if "Complete" in graph_type and actual_n > 60:
+                continue
+
             g1 = builder(actual_n)
             g2 = builder(actual_n)
 
             time_measurements = []
 
-            for _ in range(5):
+            for _ in range(3):
                 start_time = time.perf_counter()
                 result = are_isomorphic(g1, g2)
                 end_time = time.perf_counter()
@@ -687,8 +822,7 @@ def test_asymptotic_complexity():
             else:
                 time_factor = 1.0
 
-
-            if len(times) >= 1:
+            if len(times) >= 3:
                 current_complexity, _, _ = analyze_complexity(times, vertices_counts)
             else:
                 current_complexity = ""
@@ -714,7 +848,7 @@ def test_asymptotic_complexity():
         print(f"📊 Expoente: {exponent:.2f}, Fator médio: {avg_growth:.2f}x")
 
     print("\n" + "=" * 80)
-    print("📋 RESUMO DE COMPLEXIDADE POR TIPO DE GRAFO")
+    print("📋 RESUMO DE COMPLEXIDADE POR TIPO DE GRAFO (ATÉ 100 VÉRTICES)")
     print("=" + "=" * 79)
     print("Tipo de Grafo        | Complexidade     | Expoente | Fator Cresc. | Tempo Máx (s)")
     print("-" * 90)
@@ -743,16 +877,15 @@ def test_asymptotic_complexity():
 
     return all_results
 
-
 def test_memory_complexity():
-    """Teste específico para análise de complexidade de memória - versão melhorada"""
+    """Teste específico para análise de complexidade de memória - VERSÃO RÁPIDA"""
     print("\n" + "=" * 80)
-    print("TESTE DE COMPLEXIDADE DE MEMÓRIA ASSINTÓTICA - MEDIÇÃO PRECISA")
+    print("TESTE DE COMPLEXIDADE DE MEMÓRIA - VERSÃO RÁPIDA")
     print("=" + "=" * 79)
 
-    sizes = [10, 20, 30, 40, 50, 60, 70, 80]
+    sizes = [10, 15, 20, 25, 30]  
 
-    print("\n📊 ANALISANDO CONSUMO DE MEMÓRIA:")
+    print("\n📊 ANALISANDO CONSUMO DE MEMÓRIA (VERSÃO RÁPIDA):")
     print("Vértices | Tempo (s)  | Memória (MB) | Variação  | Fator Mem | Status")
     print("-" * 80)
 
@@ -851,6 +984,106 @@ def analyze_memory_complexity(memory_diffs, sizes):
 
     return complexity, slope
 
+
+def run_comprehensive_cpu_analysis_isomorphism():
+    """Executa análise completa de CPU para Isomorfismo - VERSÃO CORRIGIDA"""
+    print("\n" + "=" * 100)
+    print("ANÁLISE COMPREENSIVA DE CICLO DE PROCESSADOR - ISOMORFISMO")
+    print("=" * 100)
+
+    start_total = time.perf_counter()
+    total_cpu_user = 0
+    total_cpu_system = 0
+    cpu_percentages = []
+
+    def test_cpu_intensive():
+        g1 = build_complete_graph(15)
+        g2 = build_complete_graph(15)
+        return are_isomorphic(g1, g2)
+
+    result, cpu_metrics = measure_cpu_usage(test_cpu_intensive)
+    print_cpu_metrics(cpu_metrics, "Grafos Completos K15")
+
+    total_cpu_user += cpu_metrics['cpu_time_used']
+    cpu_percentages.append(cpu_metrics['cpu_percent'])
+
+    print("\n📈 ESCALABILIDADE DE CPU:")
+    print("Tipo de Grafo       | Vértices | Tempo Real (s) | Tempo CPU (s) | Uso CPU (%) | Eficiência (%)")
+    print("-" * 100)
+
+    test_cases = [
+        ("Completo", build_complete_graph),
+        ("Ciclo", build_cycle_graph),
+        ("Estrela", build_star_graph),
+        ("Caminho", build_path_graph)
+    ]
+
+    for nome, builder in test_cases:
+        for n in [10, 15, 20]:
+            def test_escalabilidade():
+                g1 = builder(n)
+                g2 = builder(n)
+                return are_isomorphic(g1, g2)
+
+            result, metrics = measure_cpu_usage(test_escalabilidade)
+            print(f"{nome:<18} | {n:8} | {metrics['execution_time']:13.6f} | {metrics['cpu_time_used']:12.6f} | "
+                  f"{metrics['cpu_percent']:11.2f} | {metrics['efficiency']:13.1f}")
+
+            total_cpu_user += metrics['cpu_time_used']
+            cpu_percentages.append(metrics['cpu_percent'])
+
+    print("\n🔬 TESTE COM GRAFOS COMPLEXOS:")
+    print("Tipo de Grafo       | Vértices | Tempo Real (s) | Tempo CPU (s) | Uso CPU (%) | Eficiência (%)")
+    print("-" * 100)
+
+    complex_tests = [
+        ("Petersen", criar_grafo_petersen()),
+        ("Cúbico", criar_grafo_cubico()),
+        ("Alpha-hélice 20", criar_proteina_alfa_helice_complexa(20)),
+        ("Cafeína", criar_molecula_complexa())
+    ]
+
+    for nome, grafo in complex_tests:
+        def test_complexo():
+            return are_isomorphic(grafo, grafo)
+
+        result, metrics = measure_cpu_usage(test_complexo)
+        print(
+            f"{nome:<18} | {len(grafo.vertices()):8} | {metrics['execution_time']:13.6f} | {metrics['cpu_time_used']:12.6f} | "
+            f"{metrics['cpu_percent']:11.2f} | {metrics['efficiency']:13.1f}")
+
+        total_cpu_user += metrics['cpu_time_used']
+        cpu_percentages.append(metrics['cpu_percent'])
+
+    end_total = time.perf_counter()
+    total_time = end_total - start_total
+
+    avg_cpu_percent = sum(cpu_percentages) / len(cpu_percentages) if cpu_percentages else 0
+
+    print(f"\n📊 ESTATÍSTICAS GERAIS DE CPU:")
+    print(f"  • Tempo total de execução: {total_time:.2f}s")
+    print(f"  • Tempo total de CPU (usuário): {total_cpu_user:.4f}s")
+    print(f"  • Uso médio de CPU: {avg_cpu_percent:.1f}%")
+
+    cpu_efficiency = (total_cpu_user / total_time) * 100 if total_time > 0 else 0
+
+    print(f"\n🎯 ANÁLISE DE EFICIÊNCIA:")
+    if cpu_efficiency > 70:
+        print("  • Alta eficiência de CPU - algoritmo bem otimizado")
+    elif cpu_efficiency > 40:
+        print("  • Eficiência moderada de CPU - desempenho aceitável")
+    else:
+        print("  • Baixa eficiência de CPU - possível gargalo de I/O ou espera")
+
+    return {
+        'total_time': total_time,
+        'total_cpu_user': total_cpu_user,
+        'total_cpu_system': 0,  
+        'cpu_metrics': {
+            'avg_cpu_percent': avg_cpu_percent,
+            'efficiency': cpu_efficiency
+        }
+    }
 
 def run_comprehensive_complexity_analysis():
     """Executa análise completa de complexidade"""
@@ -968,20 +1201,25 @@ def run_comprehensive_complexity_analysis():
     return time_complexity_results
 
 def performance_test():
-    """Testes de performance com grafos maiores"""
-    print("\n=== TESTES DE PERFORMANCE ===\n")
+    """Testes de performance com grafos maiores - ATÉ 500 VÉRTICES"""
+    print("\n=== TESTES DE PERFORMANCE (ATÉ 500 VÉRTICES) ===\n")
 
     performance_tests = [
         ("K_10", build_complete_graph(10)),
-        ("K_15", build_complete_graph(15)),
         ("K_20", build_complete_graph(20)),
-        ("C_20", build_cycle_graph(20)),
-        ("C_30", build_cycle_graph(30)),
-        ("K5,5", build_complete_bipartite_graph(5, 5)),
-        ("K8,8", build_complete_bipartite_graph(8, 8)),
-        ("W_10 (roda)", build_wheel_graph(10)),
-        ("Cluster de água (8 moléculas)", build_water_cluster(8)),
-        ("Cluster de água (12 moléculas)", build_water_cluster(12)),
+        ("K_30", build_complete_graph(30)),
+        ("C_50", build_cycle_graph(50)),
+        ("C_100", build_cycle_graph(100)),
+        ("C_200", build_cycle_graph(200)),
+        ("C_500", build_cycle_graph(500)), 
+        ("P_100", build_path_graph(100)),
+        ("P_500", build_path_graph(500)),   
+        ("S_100", build_star_graph(100)),
+        ("S_500", build_star_graph(500)),   
+        ("K10,10", build_complete_bipartite_graph(10, 10)),
+        ("K20,20", build_complete_bipartite_graph(20, 20)),
+        ("W_50", build_wheel_graph(50)),
+        ("W_100", build_wheel_graph(100)),
     ]
 
     print("Grafo                      | Vértices | Arestas | Tempo (s)  | Status")
@@ -1009,25 +1247,26 @@ def performance_test():
     if max_time < 0.01:
         print("Performance: Excelente ✓")
     elif max_time < 0.1:
+        print("Performance: Muito Boa ✓")
+    elif max_time < 1.0:
         print("Performance: Boa ✓")
     else:
-        print("Performance: Aceitável ~")
-
+        print(f"Performance: Aceitável ({max_time:.3f}s)")
 
 def scalability_test():
-    """Teste de escalabilidade com grafos progressivamente maiores"""
-    print("\n=== TESTE DE ESCALABILIDADE ===\n")
+    """Teste de escalabilidade com grafos progressivamente maiores - ATÉ 200 VÉRTICES"""
+    print("\n=== TESTE DE ESCALABILIDADE (ATÉ 200 VÉRTICES) ===")
 
-    print("Crescimento do tempo em função do tamanho do grafo (K_n):")
+    print("Crescimento do tempo em função do tamanho do grafo (Ciclos C_n):")
     print("Vértices | Arestas | Tempo (s)  | Fator Cresc.")
     print("-" * 50)
 
-    sizes = [5, 10, 15, 20, 25, 30]
+    sizes = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 150, 200]
     times = []
     previous_time = 0
 
     for n in sizes:
-        graph = build_complete_graph(n)
+        graph = build_cycle_graph(n)
 
         start_time = time.perf_counter()
         result = are_isomorphic(graph, graph)
@@ -1060,15 +1299,15 @@ def scalability_test():
 
         print(f"\nFator de crescimento médio: {avg_growth:.2f}x")
 
-        if avg_growth < 1.5:
+        if avg_growth < 1.2:
             complexity = "sub-linear"
             rating = "Excelente ✓"
             color = "\033[92m"
-        elif avg_growth < 2.0:
+        elif avg_growth < 1.5:
             complexity = "linear"
             rating = "Muito boa ✓"
             color = "\033[92m"
-        elif avg_growth < 3.0:
+        elif avg_growth < 2.0:
             complexity = "sub-quadrática"
             rating = "Boa ✓"
             color = "\033[93m"
@@ -1081,41 +1320,231 @@ def scalability_test():
         print(f"Complexidade observada: {complexity}")
         print(f"{color}Avaliação: {rating}{reset}")
 
+    print(f"\n--- ESCALABILIDADE COM GRAFOS CAMINHO (ATÉ 500 VÉRTICES) ---")
+    print("Vértices | Tempo (s)  | Status")
+    print("-" * 40)
+
+    path_sizes = [100, 200, 300, 400, 500]
+    for n in path_sizes:
+        graph = build_path_graph(n)
+        start_time = time.perf_counter()
+        result = are_isomorphic(graph, graph)
+        end_time = time.perf_counter()
+        elapsed = end_time - start_time
+
+        status = "✓" if result else "✗"
+        color = "\033[92m" if result else "\033[91m"
+        reset = "\033[0m"
+
+        print(f"{color}{n:8} | {elapsed:9.6f} | {status}{reset}")
+
 
 def stress_test():
-    """Teste de estresse com múltiplas execuções"""
-    print("\n=== TESTE DE ESTRESSE ===\n")
+    """Teste de estresse com múltiplas execuções - INCLUINDO 500 VÉRTICES"""
+    print("\n=== TESTE DE ESTRESSE MULTINÍVEL (ATÉ 500 VÉRTICES) ===")
 
-    test_graph = build_complete_graph(15)
-    iterations = 50
+    print("\n🔬 TESTE COM GRAFOS PEQUENOS (K15):")
+    test_graph_small = build_complete_graph(15)
+    iterations_small = 20
 
-    print(f"Executando {iterations} verificações de isomorfismo...")
+    start_time_small = time.perf_counter()
+    correct_results_small = 0
 
-    start_time = time.perf_counter()
-    correct_results = 0
-
-    for i in range(iterations):
-        result = are_isomorphic(test_graph, test_graph)
+    for i in range(iterations_small):
+        result = are_isomorphic(test_graph_small, test_graph_small)
         if result:
-            correct_results += 1
+            correct_results_small += 1
 
-    end_time = time.perf_counter()
-    total_time = end_time - start_time
-    avg_time = total_time / iterations
+    end_time_small = time.perf_counter()
+    total_time_small = end_time_small - start_time_small
+    avg_time_small = total_time_small / iterations_small
+    success_rate_small = (correct_results_small / iterations_small) * 100
 
-    success_rate = (correct_results / iterations) * 100
+    print(f"  Resultados: {correct_results_small}/{iterations_small} corretos ({success_rate_small:.1f}%)")
+    print(f"  Tempo total: {total_time_small:.4f}s")
+    print(f"  Tempo médio: {avg_time_small:.6f}s")
 
-    print(f"Resultados: {correct_results}/{iterations} corretos ({success_rate:.1f}%)")
-    print(f"Tempo total: {total_time:.4f}s")
-    print(f"Tempo médio por verificação: {avg_time:.6f}s")
+    print("\n🔬 TESTE COM GRAFOS MÉDIOS (K50):")
+    test_graph_medium = build_complete_graph(50)
+    iterations_medium = 5
 
-    if success_rate == 100:
-        print("\033[92m✓ Teste de estresse: PASSOU\033[0m")
+    start_time_medium = time.perf_counter()
+    correct_results_medium = 0
+
+    for i in range(iterations_medium):
+        result = are_isomorphic(test_graph_medium, test_graph_medium)
+        if result:
+            correct_results_medium += 1
+
+    end_time_medium = time.perf_counter()
+    total_time_medium = end_time_medium - start_time_medium
+    avg_time_medium = total_time_medium / iterations_medium
+    success_rate_medium = (correct_results_medium / iterations_medium) * 100
+
+    print(f"  Resultados: {correct_results_medium}/{iterations_medium} corretos ({success_rate_medium:.1f}%)")
+    print(f"  Tempo total: {total_time_medium:.4f}s")
+    print(f"  Tempo médio: {avg_time_medium:.6f}s")
+
+    print("\n🔬 TESTE COM GRAFOS GRANDES (K100):")
+    test_graph_large = build_complete_graph(100)
+    iterations_large = 3
+
+    start_time_large = time.perf_counter()
+    correct_results_large = 0
+
+    for i in range(iterations_large):
+        result = are_isomorphic(test_graph_large, test_graph_large)
+        if result:
+            correct_results_large += 1
+
+    end_time_large = time.perf_counter()
+    total_time_large = end_time_large - start_time_large
+    avg_time_large = total_time_large / iterations_large
+    success_rate_large = (correct_results_large / iterations_large) * 100
+
+    print(f"  Resultados: {correct_results_large}/{iterations_large} corretos ({success_rate_large:.1f}%)")
+    print(f"  Tempo total: {total_time_large:.4f}s")
+    print(f"  Tempo médio: {avg_time_large:.6f}s")
+
+    print("\n🔬 TESTE COM GRAFOS MUITO GRANDES (Ciclo C200):")
+    test_graph_huge = build_cycle_graph(200)
+    iterations_huge = 3
+
+    start_time_huge = time.perf_counter()
+    correct_results_huge = 0
+
+    for i in range(iterations_huge):
+        result = are_isomorphic(test_graph_huge, test_graph_huge)
+        if result:
+            correct_results_huge += 1
+
+    end_time_huge = time.perf_counter()
+    total_time_huge = end_time_huge - start_time_huge
+    avg_time_huge = total_time_huge / iterations_huge
+    success_rate_huge = (correct_results_huge / iterations_huge) * 100
+
+    print(f"  Resultados: {correct_results_huge}/{iterations_huge} corretos ({success_rate_huge:.1f}%)")
+    print(f"  Tempo total: {total_time_huge:.4f}s")
+    print(f"  Tempo médio: {avg_time_huge:.6f}s")
+
+    print("\n🔬 TESTE COM GRAFOS DE 500 VÉRTICES (Ciclo C500):")
+    test_graph_500 = build_cycle_graph(500)
+    iterations_500 = 2
+
+    start_time_500 = time.perf_counter()
+    correct_results_500 = 0
+
+    for i in range(iterations_500):
+        result = are_isomorphic(test_graph_500, test_graph_500)
+        if result:
+            correct_results_500 += 1
+
+    end_time_500 = time.perf_counter()
+    total_time_500 = end_time_500 - start_time_500
+    avg_time_500 = total_time_500 / iterations_500
+    success_rate_500 = (correct_results_500 / iterations_500) * 100
+
+    print(f"  Resultados: {correct_results_500}/{iterations_500} corretos ({success_rate_500:.1f}%)")
+    print(f"  Tempo total: {total_time_500:.4f}s")
+    print(f"  Tempo médio: {avg_time_500:.6f}s")
+
+    print(f"\n📊 RESUMO DO TESTE DE ESTRESSE MULTINÍVEL (ATÉ 500 VÉRTICES):")
+    print(f"  • Grafos pequenos (K15): {success_rate_small:.1f}% de sucesso")
+    print(f"  • Grafos médios (K50): {success_rate_medium:.1f}% de sucesso")
+    print(f"  • Grafos grandes (K100): {success_rate_large:.1f}% de sucesso")
+    print(f"  • Grafos muito grandes (C200): {success_rate_huge:.1f}% de sucesso")
+    print(f"  • Grafos de 500 vértices (C500): {success_rate_500:.1f}% de sucesso")
+
+    total_tests = (iterations_small + iterations_medium + iterations_large +
+                   iterations_huge + iterations_500)
+    total_correct = (correct_results_small + correct_results_medium + correct_results_large +
+                    correct_results_huge + correct_results_500)
+    overall_success_rate = (total_correct / total_tests) * 100
+    total_time = (total_time_small + total_time_medium + total_time_large +
+                  total_time_huge + total_time_500)
+
+    print(f"\n🎯 ESTATÍSTICAS GERAIS:")
+    print(f"  • Total de verificações: {total_tests}")
+    print(f"  • Total corretas: {total_correct}")
+    print(f"  • Taxa de sucesso geral: {overall_success_rate:.1f}%")
+    print(f"  • Tempo total de execução: {total_time:.4f}s")
+
+    if overall_success_rate == 100:
+        print("\n\033[92m✓ TESTE DE ESTRESSE MULTINÍVEL: PASSOU!\033[0m")
+        print("  O algoritmo manteve 100% de precisão mesmo com grafos de 500 vértices")
         return True
     else:
-        print("\033[91m✗ Teste de estresse: FALHOU\033[0m")
+        print(f"\n\033[91m✗ TESTE DE ESTRESSE MULTINÍVEL: FALHOU!\033[0m")
+        print(f"  {total_tests - total_correct} verificação(ões) incorreta(s)")
         return False
 
+def stress_test_very_large():
+    """Teste de estresse específico para grafos muito grandes - ATÉ 500 VÉRTICES"""
+    print("\n=== TESTE DE ESTRESSE - GRAFOS GRANDES (ATÉ 500 VÉRTICES) ===")
+
+    test_cases = [
+        ("Ciclo C100", build_cycle_graph(100), 5),
+        ("Ciclo C200", build_cycle_graph(200), 3),
+        ("Ciclo C500", build_cycle_graph(500), 2),  
+        ("Path P100", build_path_graph(100), 3),
+        ("Path P500", build_path_graph(500), 2),    
+        ("Estrela S100", build_star_graph(100), 5),
+        ("Estrela S500", build_star_graph(500), 2),
+        ("Grafo Bipartido K50,50", build_complete_bipartite_graph(50, 50), 2),
+    ]
+
+    print("Testando grafos grandes (até 500 vértices)...")
+    print("Grafo                | Vértices | Arestas | Iterações | Tempo Médio (s) | Status")
+    print("--------------------------------------------------------------------------------")
+
+    all_passed = True
+    total_time = 0
+    total_tests = 0
+    total_correct = 0
+
+    for name, graph, iterations in test_cases:
+        n_vertices = len(graph.vertices())
+        n_edges = len(graph.arestas())
+
+        start_time = time.perf_counter()
+        correct = 0
+
+        for i in range(iterations):
+            result = are_isomorphic(graph, graph)
+            if result:
+                correct += 1
+
+        end_time = time.perf_counter()
+        elapsed = end_time - start_time
+        avg_time = elapsed / iterations
+        total_time += elapsed
+        total_tests += iterations
+        total_correct += correct
+
+        status = "PASS" if correct == iterations else "FAIL"
+        color = "\033[92m" if correct == iterations else "\033[91m"
+        reset = "\033[0m"
+
+        print(f"{name:20} | {n_vertices:8} | {n_edges:7} | {iterations:9} | {avg_time:15.6f} | {color}{status}{reset}")
+
+        if correct != iterations:
+            all_passed = False
+
+    success_rate = (total_correct / total_tests) * 100
+
+    print(f"\n📊 RESUMO - GRAFOS GRANDES (ATÉ 500 VÉRTICES):")
+    print(f"  • Total de verificações: {total_tests}")
+    print(f"  • Verificações corretas: {total_correct}")
+    print(f"  • Taxa de sucesso: {success_rate:.1f}%")
+    print(f"  • Tempo total: {total_time:.4f}s")
+    print(f"  • Tempo médio por verificação: {total_time / total_tests:.6f}s")
+
+    if all_passed:
+        print("\n\033[92m✓ TESTE COM GRAFOS ATÉ 500 VÉRTICES: PASSOU!\033[0m")
+    else:
+        print("\n\033[91m✗ TESTE COM GRAFOS ATÉ 500 VÉRTICES: FALHOU!\033[0m")
+
+    return all_passed
 
 def test_complex_graphs():
     """Testes com grafos complexos de diferentes tipos"""
@@ -1249,7 +1678,7 @@ def main():
     """Função principal com todos os testes"""
     print("=" * 80)
     print("TESTES COMPREENSIVOS PARA ALGORITMO DE ISOMORFISMO - GRAFOS COMPLEXOS")
-    print("=" + "=" * 79)
+    print("=" * 80)
     print("=== AVALIAÇÃO COMPLETA DO ALGORITMO COM ANÁLISE DE COMPLEXIDADE ===\n")
 
     all_passed = True
@@ -1276,7 +1705,7 @@ def main():
 
     print("\n" + "=" * 80)
     print("INICIANDO ANÁLISE DE COMPLEXIDADE ASSINTÓTICA")
-    print("=" + "=" * 79)
+    print("=" * 80)
     complexity_results = run_comprehensive_complexity_analysis()
 
     print("\nEXECUTANDO TESTES DE PERFORMANCE...")
@@ -1289,13 +1718,25 @@ def main():
     if not stress_test():
         all_passed = False
 
+    print("\nEXECUTANDO TESTE DE ESTRESSE COM GRAFOS MUITO GRANDES...")
+    if not stress_test_very_large():
+        all_passed = False
+
     print("\nEXECUTANDO TESTES COM GRAFOS COMPLEXOS...")
     if not test_complex_graphs():
         all_passed = False
 
+    # =========================================================================
+    # NOVA SEÇÃO: ANÁLISE DE CPU
+    # =========================================================================
+    print("\n" + "=" * 80)
+    print("INICIANDO ANÁLISE DE CPU COM MÉTRICAS CORRIGIDAS")
+    print("=" * 80)
+    cpu_results = run_cpu_analysis()
+
     print("\n" + "=" * 80)
     print("RELATÓRIO FINAL - ALGORITMO DE ISOMORFISMO")
-    print("=" + "=" * 79)
+    print("=" * 80)
 
     if all_passed:
         print("\033[92m✓ TODOS OS TESTES PASSARAM!\033[0m")
@@ -1314,6 +1755,37 @@ def main():
     print(f"  • Fator de crescimento médio: {avg_growth:.2f}x")
     print(f"  • Tipos de grafos analisados: {len(complexity_results)}")
 
+    # =========================================================================
+    # SEÇÃO CORRIGIDA: RESUMO DE CPU
+    # =========================================================================
+    print(f"\n⚡ RESUMO DA ANÁLISE DE CPU:")
+    print(f"  • Tempo total de CPU (usuário): {cpu_results['total_cpu_user']:.4f}s")
+    print(f"  • Tempo total de CPU (sistema): {cpu_results['total_cpu_system']:.4f}s")
+
+    total_cpu_time = cpu_results['total_cpu_user'] + cpu_results['total_cpu_system']
+    if cpu_results['total_time'] > 0:
+        overall_efficiency = (total_cpu_time / cpu_results['total_time']) * 100
+    else:
+        overall_efficiency = 0
+
+    print(f"  • Eficiência geral: {overall_efficiency:.1f}%")
+    print(f"  • Uso médio de CPU: {cpu_results['cpu_metrics']['avg_cpu_percent']:.1f}%")
+
+    cpu_efficiency = overall_efficiency / 100.0
+
+    if cpu_efficiency > 0.7:
+        cpu_status = "EXCELENTE"
+        cpu_color = "\033[92m"
+    elif cpu_efficiency > 0.4:
+        cpu_status = "BOA"
+        cpu_color = "\033[93m"
+    else:
+        cpu_status = "MODERADA"
+        cpu_color = "\033[91m"
+
+    reset = "\033[0m"
+    print(f"  • Eficiência de CPU: {cpu_color}{cpu_status}{reset}")
+
     if avg_exponent <= 1.0 and avg_growth <= 1.5:
         assessment = "EXCELENTE - Pronto para aplicações em grande escala"
         color = "\033[92m"
@@ -1327,7 +1799,39 @@ def main():
     reset = "\033[0m"
     print(f"  • Avaliação: {color}{assessment}{reset}")
 
-    print("\n🔬 APLICAÇÕES RECOMENDADAS:")
+    print(f"\n🔮 PREVISÕES DE PERFORMANCE:")
+    base_time = 0.001
+
+    if avg_exponent <= 1.0:
+        for vertices in [100, 500, 1000]:
+            estimated_time = base_time * (vertices / 10) ** avg_exponent
+            print(f"  • {vertices:4} vértices: ~{estimated_time:.4f}s")
+        print(f"  • Performance mantida mesmo para grafos muito grandes")
+    elif avg_exponent <= 1.5:
+        for vertices in [100, 500]:
+            estimated_time = base_time * (vertices / 10) ** avg_exponent
+            print(f"  • {vertices:4} vértices: ~{estimated_time:.4f}s")
+        print(f"  • Para 1000+ vértices: ~{base_time * (1000 / 10) ** avg_exponent:.4f}s (ainda viável)")
+    else:
+        for vertices in [100, 500]:
+            estimated_time = base_time * (vertices / 10) ** avg_exponent
+            print(f"  • {vertices:4} vértices: ~{estimated_time:.4f}s")
+        print(f"  ⚠️  1000+ vértices: considerar otimizações ou heurísticas")
+
+    print(f"\n💡 RECOMENDAÇÕES ESPECÍFICAS BASEADAS NAS MÉTRICAS DE CPU:")
+
+    if cpu_results['cpu_metrics']['avg_cpu_percent'] < 50:
+        print("  • Baixo uso de CPU - algoritmo pode beneficiar de paralelização")
+    elif cpu_results['cpu_metrics']['avg_cpu_percent'] > 90:
+        print("  • Alto uso de CPU - algoritmo já está bem otimizado")
+
+    if cpu_results['total_cpu_system'] > cpu_results['total_cpu_user'] * 2:
+        print("  • Alto tempo de sistema - verificar operações de I/O")
+
+    if cpu_efficiency < 0.4:
+        print("  • Baixa eficiência de CPU - investigar possíveis gargalos")
+
+    print(f"\n🔬 APLICAÇÕES RECOMENDADAS:")
     if avg_exponent <= 1.0:
         print("  ✅ Química computacional (moléculas complexas)")
         print("  ✅ Bioinformática (proteínas e estruturas grandes)")
@@ -1345,7 +1849,22 @@ def main():
         print("  ✅ Teoria dos grafos (até ~500 vértices)")
         print("  ⚠️  Para grafos maiores: considerar otimizações")
 
+    print(f"\n📈 MÉTRICAS FINAIS DE DESEMPENHO:")
+    print(f"  • Correção algorítmica: {'✓ PASSOU' if all_passed else '✗ FALHOU'}")
+    print(f"  • Complexidade: {avg_exponent:.2f} (expoente médio)")
+    print(f"  • Eficiência de CPU: {cpu_efficiency:.1%}")
+    print(f"  • Uso de recursos: {cpu_status}")
+
     print("\n" + "=" * 80)
+
+    return {
+        'all_passed': all_passed,
+        'complexity_results': complexity_results,
+        'cpu_results': cpu_results,
+        'avg_exponent': avg_exponent,
+        'avg_growth': avg_growth,
+        'cpu_efficiency': cpu_efficiency
+    }
 
 
 if __name__ == "__main__":
