@@ -7,10 +7,6 @@ import time
 
 
 class MolecularGraphIsomorphism:
-    """
-    Implementação RIGOROSA dos algoritmos de Faulon (1998)
-    Complexidade polinomial garantida para todos os casos
-    """
 
     def __init__(self, Z0: int = 4):
         self.Z0 = Z0
@@ -33,10 +29,6 @@ class MolecularGraphIsomorphism:
         }
 
     def transformar_para_grafo_simples(self, grafo_molecular: Grafo) -> Grafo:
-        """
-        Implementação EXATA do Scheme 1 do artigo
-        Complexidade: O(N_A) - linear no número de átomos
-        """
         G_simples = Grafo()
         atom_counter = 1
 
@@ -93,10 +85,6 @@ class MolecularGraphIsomorphism:
         return float(rotulo)
 
     def extended_connectivity_partition(self, grafo: Grafo, max_iterations: int = None) -> Dict[Any, int]:
-        """
-        Algoritmo de extended connectivity (Morgan) melhorado
-        Complexidade: O(N log N) usando hashing eficiente
-        """
         if max_iterations is None:
             max_iterations = len(grafo.vertices()) * 2
 
@@ -135,10 +123,6 @@ class MolecularGraphIsomorphism:
         return colors
 
     def isomorfismo_molecular_polinomial(self, G1: Grafo, G2: Grafo) -> bool:
-        """
-        Algoritmo de isomorfismo com complexidade polinomial garantida
-        Complexidade: O(N²)
-        """
         if len(G1.vertices()) != len(G2.vertices()):
             return False
         if len(G1.arestas()) != len(G2.arestas()):
@@ -154,10 +138,6 @@ class MolecularGraphIsomorphism:
         return Counter(colors1.values()) == Counter(colors2.values())
 
     def _automorphismos_corretos(self, grafo: Grafo) -> List[Dict]:
-        """
-        Algoritmo de automorfismos com complexidade O(N³) garantida
-        Retorna APENAS automorfismos válidos e únicos
-        """
         try:
             start_time = time.time()
 

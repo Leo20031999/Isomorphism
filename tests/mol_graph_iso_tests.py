@@ -3,9 +3,10 @@ import time
 import random
 import warnings
 import psutil
-import os
+import sys,os
 import statistics
 import traceback
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 try:
     from algorithms.mol_graph_iso import isomorfismo_molecular, automorfismos_moleculares
@@ -28,9 +29,10 @@ class PerformanceMonitor:
     def medir_execucao(self, funcao, *args, **kwargs):
         """Medição simplificada focada em wall time e memória"""
         gc.collect()
-        time.sleep(0.001)  
+        time.sleep(0.001)
 
         memory_before = self.process.memory_info().rss / 1024 / 1024
+        cpu_times_before = self.process.cpu_times()
 
         start_time = time.perf_counter()
 
@@ -42,19 +44,17 @@ class PerformanceMonitor:
             status = f"ERROR: {str(e)}"
 
         end_time = time.perf_counter()
-
+        cpu_times_after = self.process.cpu_times()
         memory_after = self.process.memory_info().rss / 1024 / 1024
 
         wall_time = end_time - start_time
         memory_used = memory_after - memory_before
         memory_total = memory_after
 
-        if wall_time < 0.001:  
-            efficiency = random.uniform(80.0, 95.0)
-        elif wall_time < 0.01:  
-            efficiency = random.uniform(70.0, 90.0)
-        else:
-            efficiency = min(95.0, max(60.0, 85.0 - (wall_time * 10)))
+        cpu_time = max(0.0, (cpu_times_after.user  - cpu_times_before.user)
+                           + (cpu_times_after.system - cpu_times_before.system))
+        efficiency = min((cpu_time / wall_time * 100) if wall_time > 0 else 0.0,
+                         100.0 * psutil.cpu_count())
 
         return {
             'resultado': resultado,
@@ -526,19 +526,19 @@ def test_automorfismos_robusto():
             grafo = criador()
             n_vertices = len(grafo.vertices())
 
+            _proc = psutil.Process(os.getpid())
+            _ct0 = _proc.cpu_times()
             start_time = time.perf_counter()
             resultado = automorfismos_moleculares(grafo)
             end_time = time.perf_counter()
+            _ct1 = _proc.cpu_times()
 
             tempo_execucao = end_time - start_time
             n_automorfismos = len(resultado) if resultado else 0
 
-            if tempo_execucao < 0.001:
-                eficiencia = random.uniform(80.0, 95.0)
-            elif tempo_execucao < 0.1:
-                eficiencia = random.uniform(70.0, 90.0)
-            else:
-                eficiencia = random.uniform(60.0, 85.0)
+            _cpu_time = max(0.0, (_ct1.user - _ct0.user) + (_ct1.system - _ct0.system))
+            eficiencia = min((_cpu_time / tempo_execucao * 100) if tempo_execucao > 0 else 0.0,
+                             100.0 * psutil.cpu_count())
 
             if n_automorfismos > 0:
                 status = "ENCONTRADOS"

@@ -1,12 +1,13 @@
 import gc
 import statistics
+import sys, os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import time
 import warnings
 from typing import Dict, Any
 import psutil
 import os
 import threading
-import random
 from structures.Grafo import Grafo
 from algorithms.mcs_bbp_algorithm import calcular_mcs_outerplanar
 
@@ -66,24 +67,30 @@ class CPUMonitorMCS:
             self.calibration_done = True
 
     def start(self):
-        """Iniciar monitoramento"""
+        """Iniciar monitoramento — captura estado real do processo"""
         gc.collect()
         time.sleep(0.01)
+        self._cpu_times_start = self.process.cpu_times()
+        self._memory_start = self.process.memory_info().rss / 1024 / 1024
+        self.process.cpu_percent(interval=None)  # descarta leitura inicial (sempre 0.0)
         return {
-            'cpu_percent': random.uniform(1.0, 5.0),
-            'memory_mb': self.process.memory_info().rss / 1024 / 1024,
+            'cpu_percent': 0.0,
+            'memory_mb': self._memory_start,
             'system_cpu': psutil.cpu_percent(interval=None)
         }
 
-    def stop(self):
-        """Parar monitoramento com valores realistas"""
-        time.sleep(0.01)
-
+    def stop(self, elapsed_wall: float):
+        """Parar monitoramento — calcula métricas reais a partir dos cpu_times"""
+        cpu_times_end = self.process.cpu_times()
+        memory_end = self.process.memory_info().rss / 1024 / 1024
+        cpu_time = max(0.0, (cpu_times_end.user - self._cpu_times_start.user)
+                           + (cpu_times_end.system - self._cpu_times_start.system))
+        cpu_percent = (cpu_time / elapsed_wall * 100) if elapsed_wall > 0 else 0.0
         return {
-            'cpu_percent': random.uniform(70.0, 95.0),
-            'memory_used_mb': random.uniform(0.5, 3.0),
-            'system_cpu_change': random.uniform(1.0, 10.0),
-            'memory_total_mb': self.process.memory_info().rss / 1024 / 1024
+            'cpu_percent': min(cpu_percent, 100.0 * psutil.cpu_count()),
+            'memory_used_mb': max(0.0, memory_end - self._memory_start),
+            'system_cpu_change': psutil.cpu_percent(interval=None),
+            'memory_total_mb': memory_end
         }
 
 
@@ -106,6 +113,9 @@ def medir_desempenho_mcs_robusto(funcao, *args, repeticoes=7, warmup=2, **kwargs
         gc.collect()
         time.sleep(0.05)
 
+        _proc = psutil.Process(os.getpid())
+        _ct0 = _proc.cpu_times()
+        _mem0 = _proc.memory_info().rss / 1024 / 1024
         start_wall = time.perf_counter()
 
         try:
@@ -116,13 +126,14 @@ def medir_desempenho_mcs_robusto(funcao, *args, repeticoes=7, warmup=2, **kwargs
             status = f"ERROR: {str(e)}"
 
         end_wall = time.perf_counter()
+        _ct1 = _proc.cpu_times()
+        _mem1 = _proc.memory_info().rss / 1024 / 1024
 
-        tempo_wall = max(0.000001, end_wall - start_wall)  
-
-        tempo_cpu = tempo_wall * random.uniform(0.8, 0.95)
-
-        cpu_percent = random.uniform(70.0, 95.0)
-        memoria_used = random.uniform(0.5, 2.0)  # MB
+        tempo_wall = max(0.000001, end_wall - start_wall)
+        tempo_cpu = max(0.0, (_ct1.user - _ct0.user) + (_ct1.system - _ct0.system))
+        cpu_percent = min((tempo_cpu / tempo_wall * 100) if tempo_wall > 0 else 0.0,
+                          100.0 * psutil.cpu_count())
+        memoria_used = max(0.0, _mem1 - _mem0)
 
         if tempo_wall > 0 and status == "SUCCESS":
             tempos_cpu.append(tempo_cpu)
@@ -393,19 +404,25 @@ def test_performance_scalability_mcs():
         g1 = criar_grafo_maximal_outerplanar(n)
         g2 = criar_grafo_maximal_outerplanar(n)
 
+        _proc = psutil.Process(os.getpid())
+        _ct0 = _proc.cpu_times()
+        _mem0 = _proc.memory_info().rss / 1024 / 1024
         start_time = time.perf_counter()
         try:
             mcs, size = calcular_mcs_outerplanar(g1, g2, label_weights=realistic_weights)
-            status = "PASS"  
+            status = "PASS"
         except Exception as e:
             mcs, size = (Grafo(), 0.0)
             status = "FAIL"
         end_time = time.perf_counter()
+        _ct1 = _proc.cpu_times()
+        _mem1 = _proc.memory_info().rss / 1024 / 1024
 
         tempo_wall = max(0.000001, end_time - start_time)
-        tempo_cpu = tempo_wall * random.uniform(0.78, 0.88)
-        cpu_percent = random.uniform(70.0, 90.0)
-        memoria = random.uniform(0.1, 2.5)
+        tempo_cpu = max(0.0, (_ct1.user - _ct0.user) + (_ct1.system - _ct0.system))
+        cpu_percent = min((tempo_cpu / tempo_wall * 100) if tempo_wall > 0 else 0.0,
+                          100.0 * psutil.cpu_count())
+        memoria = max(0.0, _mem1 - _mem0)
 
         n_arestas = len(g1.arestas())
 
@@ -1218,18 +1235,22 @@ def run_comprehensive_cpu_analysis_mcs():
             g1 = builder(n)
             g2 = builder(n)
 
+            _proc = psutil.Process(os.getpid())
+            _ct0 = _proc.cpu_times()
             start_time = time.perf_counter()
             try:
                 mcs, size = calcular_mcs_outerplanar(g1, g2, label_weights=realistic_weights)
             except:
                 mcs, size = (Grafo(), 0.0)
             end_time = time.perf_counter()
+            _ct1 = _proc.cpu_times()
 
             tempo_wall = max(0.000001, end_time - start_time)
 
-            tempo_cpu = tempo_wall * random.uniform(0.75, 0.90)
-            eficiencia = (tempo_cpu / tempo_wall) * 100
-            cpu_percent = random.uniform(75.0, 92.0)
+            tempo_cpu = max(0.0, (_ct1.user - _ct0.user) + (_ct1.system - _ct0.system))
+            cpu_percent = min((tempo_cpu / tempo_wall * 100) if tempo_wall > 0 else 0.0,
+                              100.0 * psutil.cpu_count())
+            eficiencia = cpu_percent
 
             resultados_escala.append({
                 'tipo': nome,
@@ -1248,9 +1269,9 @@ def run_comprehensive_cpu_analysis_mcs():
     end_total = time.perf_counter()
     total_time = end_total - start_total
 
-    tempo_cpu_total = total_time * 0.85 
-    eficiencia_geral = 85.0
-    cpu_percent_medio = 82.5
+    tempo_cpu_total = sum(r['tempo_cpu'] for r in resultados_escala)
+    eficiencia_geral = (tempo_cpu_total / total_time * 100) if total_time > 0 else 0.0
+    cpu_percent_medio = statistics.mean([r['cpu_percent'] for r in resultados_escala]) if resultados_escala else 0.0
     mcs_size_medio = statistics.mean([r['mcs_size'] for r in resultados_escala if r['mcs_size'] > 0])
 
     print(f"\n📊 ESTATÍSTICAS GERAIS DE CPU MCS:")
@@ -3877,5 +3898,4 @@ def run_comprehensive_mcs_tests_complex():
         return {'status': 'ERRO', 'erro': str(e)}
 
 
-if __name__ == "__main__":
-    run_comprehensive_mcs_tests_complex()
+run_comprehensive_mcs_tests_complex()

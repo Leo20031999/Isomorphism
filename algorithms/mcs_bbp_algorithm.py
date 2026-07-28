@@ -203,7 +203,7 @@ class OuterplanarMCS:
             self.logger.warning(f"Erro ao criar assinatura do grafo: {e}")
             return f"graph_{id(graph)}"
 
-    def _find_promising_pairs_optimized(self, G: Grafo, H: Grafo, candidates_G: List, candidates_H: List) -> List[
+    def _find_promising_pairs(self, G: Grafo, H: Grafo, candidates_G: List, candidates_H: List) -> List[
         Tuple]:
         """Encontra pares promissores com critérios mais inteligentes"""
         promising_pairs = []
@@ -283,7 +283,7 @@ class OuterplanarMCS:
 
         if not is_connected_G or not is_connected_H:
             self.logger.info("Grafos desconexos, usando aproximação para componentes conectados")
-            return self._compute_connected_components_mcs_optimized(G, H)
+            return self._compute_connected_components_mcs(G, H)
 
         root_candidates_G = self._find_root_candidates(G)
         root_candidates_H = self._find_root_candidates(H)
@@ -291,7 +291,7 @@ class OuterplanarMCS:
         self.logger.info(f"Encontrados {len(root_candidates_G)} e {len(root_candidates_H)} candidatos a raiz")
 
         # Gerar pares promissores com critérios mais flexíveis
-        promising_pairs = self._find_promising_pairs_optimized(G, H, root_candidates_G, root_candidates_H)
+        promising_pairs = self._find_promising_pairs(G, H, root_candidates_G, root_candidates_H)
 
         if not promising_pairs:
             self.logger.info("Nenhum par promissor encontrado, usando fallback avançado")
@@ -334,8 +334,8 @@ class OuterplanarMCS:
         self.logger.info(f"MCS encontrado com tamanho: {self.mcs_best_candidate[1]}")
         return self.mcs_best_candidate
 
-    def _compute_connected_components_mcs_optimized(self, G: Grafo, H: Grafo) -> Tuple[Grafo, float]:
-        """MCS otimizado para componentes conectados"""
+    def _compute_connected_components_mcs(self, G: Grafo, H: Grafo) -> Tuple[Grafo, float]:
+        """MCS para componentes conectados"""
         try:
             components_G = self._find_connected_components(G)
             components_H = self._find_connected_components(H)
@@ -509,7 +509,7 @@ class OuterplanarMCS:
         return (Grafo(), 0.0)
 
     def _create_cache_key(self, P: GraphPart, Q: GraphPart) -> tuple:
-        """Cria chave única para cache de forma robusta e eficiente - CORREÇÃO APLICADA"""
+        """Cria chave única para cache de forma robusta e eficiente"""
         try:
             # Estratégia mais simples e direta para evitar recursão
             # Usar identificadores únicos dos grafos + características essenciais
