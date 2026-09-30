@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 import time
 import warnings
 from typing import Dict, Any
+import random
 import psutil
 import os
 import threading
@@ -1874,7 +1875,7 @@ def test_grafos_especiais():
             g2 = criador()
 
             start_time = time.time()
-            mcs, size = calcular_mcs_outerplanar(g1, g2, label_weights=realistic_weights)
+            mcs, size, stats = calcular_mcs_outerplanar(g1, g2, label_weights=realistic_weights, return_stats=True)
             end_time = time.time()
 
             tempo_execucao = end_time - start_time
@@ -1892,7 +1893,7 @@ def test_grafos_especiais():
                 'status': status
             })
 
-            print(f"{nome:<17} | {n_vertices:8} | {n_arestas:8} | {tempo_execucao:10.4f} | {size:8.1f} | {status}")
+            print(f"{nome:<17} | {n_vertices:8} | {n_arestas:8} | {tempo_execucao:10.4f} | {size:8.1f} | {status} | Timeout: {stats.get('timeout_occurred', False)}")
 
         except Exception as e:
             print(f"{nome:<17} | {'-':8} | {'-':8} | {'ERROR':>10} | {'-':8} | FAIL - {str(e)[:20]}")
@@ -2716,31 +2717,6 @@ def test_estresse_grandes_grafos():
 
     return resultados
 
-def count_passed_single(result):
-    """Conta um único resultado - VERSÃO MELHORADA"""
-    if isinstance(result, dict):
-        status = result.get('status', '').upper()
-
-        if status in ['PASS', 'SLOW', '✓', 'PASSED', 'SUCCESS', 'ACEITAVEL', 'SUCESSO']:
-            return 1
-        elif result.get('mcs_size', 0) > 0:
-            return 1
-        elif result.get('tempo', float('inf')) < 60.0:  
-            return 1
-        elif result.get('tempo_wall', float('inf')) < 60.0:
-            return 1
-        elif 'vertices' in result and 'arestas' in result and result.get('mcs_size', 0) > 0:
-            return 1
-        elif result.get('vertices', 0) >= 100 and result.get('tempo', float('inf')) < 300.0:
-            return 1
-        else:
-            return 0
-    elif isinstance(result, bool):
-        return 1 if result else 0
-    else:
-        return 0
-
-
 def criar_grafo_proteina_pequena():
     """Cria um grafo simulando uma pequena proteína ou peptídeo"""
     g = Grafo()
@@ -3483,6 +3459,8 @@ def count_passed_single(result):
 
         if status in ['PASS', 'SLOW', '✓', 'PASSED', 'SUCCESS', 'ACEITAVEL', 'SUCESSO']:
             return 1
+        elif status == 'FAIL':
+            return 0
         elif result.get('mcs_size', 0) > 0:
             return 1
         elif result.get('tempo_wall', float('inf')) < 10.0:
@@ -3490,10 +3468,6 @@ def count_passed_single(result):
         elif result.get('tempo', float('inf')) < 10.0:
             return 1
         elif 'vertices' in result and 'arestas' in result and result.get('mcs_size', 0) > 0:
-            return 1
-        elif status == 'ACEITAVEL':
-            return 1
-        elif result.get('status') == 'SUCCESS':
             return 1
         elif result.get('sem_falhas') == True and result.get('tempos_estaveis') == True:
             return 1

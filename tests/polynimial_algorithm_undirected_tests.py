@@ -4,6 +4,10 @@ import random
 import psutil
 import os
 import math
+import sys 
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from algorithms.polynomial_algorithm_undirected import are_isomorphic, _generate_isomorphic_group
 from structures.Grafo import Grafo
 
@@ -381,7 +385,6 @@ def measure_cpu_usage(func, *args, **kwargs):
     """Mede o uso de CPU de forma precisa e confiável"""
     process = psutil.Process(os.getpid())
 
-    start_cpu_times = process.cpu_times()
     start_perf = time.perf_counter()
     start_process = time.process_time()
 
@@ -389,14 +392,10 @@ def measure_cpu_usage(func, *args, **kwargs):
 
     end_perf = time.perf_counter()
     end_process = time.process_time()
-    end_cpu_times = process.cpu_times()
 
     real_time = end_perf - start_perf
     process_cpu_time = end_process - start_process
-
-    user_time = end_cpu_times.user - start_cpu_times.user
-    system_time = end_cpu_times.system - start_cpu_times.system
-    total_cpu_time = user_time + system_time
+    total_cpu_time = process_cpu_time
 
     if real_time <= 0:
         real_time = 0.000001
@@ -404,13 +403,13 @@ def measure_cpu_usage(func, *args, **kwargs):
     cpu_percent = (total_cpu_time / real_time) * 100
     efficiency = (process_cpu_time / real_time) * 100
 
-    cpu_percent = min(cpu_percent, 1000)  
+    cpu_percent = min(cpu_percent, 1000)
     efficiency = min(efficiency, 1000)
 
     return result, {
         'execution_time': real_time,
-        'cpu_time_user': user_time,
-        'cpu_time_system': system_time,
+        'cpu_time_user': total_cpu_time,
+        'cpu_time_system': 0.0,
         'cpu_time_used': total_cpu_time,
         'process_cpu_time': process_cpu_time,
         'cpu_percent': cpu_percent,
@@ -1759,8 +1758,8 @@ def main():
     # SEÇÃO CORRIGIDA: RESUMO DE CPU
     # =========================================================================
     print(f"\n⚡ RESUMO DA ANÁLISE DE CPU:")
-    print(f"  • Tempo total de CPU (usuário): {cpu_results['total_cpu_user']:.4f}s")
-    print(f"  • Tempo total de CPU (sistema): {cpu_results['total_cpu_system']:.4f}s")
+    print(f"  • Tempo total de CPU (usuário): {cpu_results['total_cpu_user']:.7f}s")
+    print(f"  • Tempo total de CPU (sistema): {cpu_results['total_cpu_system']:.7f}s")
 
     total_cpu_time = cpu_results['total_cpu_user'] + cpu_results['total_cpu_system']
     if cpu_results['total_time'] > 0:
